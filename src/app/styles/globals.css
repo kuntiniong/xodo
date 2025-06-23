@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* color palette */
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  --color-muted: #222121;
+
+  --color-link-from: #f7b8b8;
+  --color-link-to: #fefefe;
+  --color-link: linear-gradient(to right, var(--color-link-from), var(--color-link-to));
+  --color-link-hover: #00ffcc;
+
+  /* fonts */
+  --font-main: var(--font-helvetica-neue-light);
+  --font-title: var(--font-helvetica-neue-bold);
+
+  --font-link: var(--font-helvetica-neue-thin);
+  --font-tag: var(--font-helvetica-neue-thin-italic);
+  --font-accent: var(--font-nothing);
+
+  --font-mono: var(--font-jetbrains-mono);
+  --font-mono-bold: var(--font-jetbrains-mono-bold);
+}
+
+@layer components {
+  .card {
+    @apply bg-background text-foreground rounded-3xl border-[2px] border-foreground;
+  }
+
+  .btn {
+    @apply bg-clip-text text-transparent transition-colors duration-700;
+    background-image: var(--color-link);
+  }
+
+  .btn:hover {
+    @apply text-link-hover;
+  }
+
+  /* links */
+  .nav-link {
+    @apply bg-clip-text text-transparent transition-colors duration-700 no-underline;
+    background-image: var(--color-link);
+  }
+
+  .nav-link:hover {
+    @apply text-link-hover;
+    transform: translateX(3px);
+  }
+
+  .link {
+    @apply text-white underline transition-all duration-300;
+  }
+
+  .link:hover {
+    @apply text-link-hover !no-underline;
+  }
+
+  /* custom font  */
+  .title {
+    @apply font-title tracking-[-0.1em] bg-[url('/fontTexture/whiteFabric.png')] bg-cover bg-center bg-clip-text text-transparent;
+  }
+
+  .custom-font-nothing {
+    @apply font-accent opacity-70 tracking-[-0.1em];
+  }
+
+  .custom-font-outline {
+    @apply font-title text-transparent;
+    -webkit-text-stroke: 1px var(--color-foreground);
+  }
+}
+
+body {
+  @apply bg-background text-foreground font-main;
+}
