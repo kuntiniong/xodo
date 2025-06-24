@@ -138,7 +138,7 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
             className="flex w-full gap-2 items-center border-b border-foreground pb-2 mb-2"
           >
             <input
-              className="flex-1 outline-none border-none bg-transparent text-lg placeholder-gray-400 text-foreground custom-font-nothing"
+              className="flex-1 outline-none border-none bg-transparent text-lg placeholder-foreground-muted text-foreground custom-font-nothing"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -147,7 +147,7 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
             />
             <button
               type="submit"
-              className="btn w-9 h-9 flex items-center justify-center rounded-full bg-muted hover:bg-foreground/20 text-2xl font-bold"
+              className="btn w-9 h-9 flex items-center justify-center rounded-full bg-foreground-muted hover:bg-foreground/20 text-2xl font-bold"
               aria-label="Add task"
             >
               +
@@ -155,7 +155,7 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
           </form>
           <ul className="w-full flex flex-col gap-4">
             {todos.length === 0 && (
-              <li className="text-muted text-center custom-font-nothing text-lg">
+              <li className="text-background-muted text-center custom-font-nothing text-lg">
                 no todos yet.
               </li>
             )}
@@ -215,7 +215,7 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
           </ul>
           {/* Make the label and number side by side */}
           <div className="mt-2 flex flex-row items-end justify-end text-foreground text-base font-tag text-right relative min-h-[60px] gap-3 -mb-[0.9em]">
-            <span>Your remaining todos :</span>
+            <span>your remaining todos :</span>
             <span className="custom-font-outline text-7xl pointer-events-none leading-none -mb-[0.39em] -mr-3">
               {remaining}
             </span>

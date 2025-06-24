@@ -101,18 +101,18 @@ export default function CookieViewer() {
     <ShadowIn className="w-full" shadowColor="white">
       <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
-          <h2 className="text-5xl title text-left my-2">import/export</h2>
+          <h2 className="text-5xl title text-left my-2">save</h2>
           <div className="mb-4 grid grid-cols-3 gap-2 w-full">
             <div className="col-span-2 flex gap-2">
               <button
-                className="btn px-3 py-1 rounded bg-muted font-bold mb-2"
+                className="btn px-3 py-1 rounded bg-foreground-muted font-bold mb-2"
                 onClick={() => setShowExport((v) => !v)}
                 type="button"
               >
                 {showExport ? "hide export" : "export"}
               </button>
               <button
-                className="btn px-3 py-1 rounded bg-muted font-bold mb-2"
+                className="btn px-3 py-1 rounded bg-foreground-muted font-bold mb-2"
                 onClick={() => setShowImport((v) => !v)}
                 type="button"
               >
@@ -121,8 +121,12 @@ export default function CookieViewer() {
             </div>
             <div className="flex justify-end">
               <button
-                className="card btn px-3 py-1 rounded text-white font-bold mb-2"
-                onClick={cleanUpCookies}
+                className="card btn px-3 py-1 rounded-lg font-bold mb-2"
+                onClick={() => {
+                  if (window.confirm("Are you sure you want to reset all todos cookies? This cannot be undone.")) {
+                    cleanUpCookies();
+                  }
+                }}
                 type="button"
               >
                 RESET
@@ -132,7 +136,7 @@ export default function CookieViewer() {
           {showExport && (
             <div className="flex flex-col gap-2 items-end w-full">
               <textarea
-                className="w-full bg-muted p-2 rounded text-xs font-mono mb-2"
+                className="w-full bg-foreground-muted p-2 rounded text-xs font-mono mb-2"
                 rows={6}
                 readOnly
                 value={exportString}
@@ -154,7 +158,7 @@ export default function CookieViewer() {
           {showImport && (
             <div className="flex flex-col gap-2 mt-2 items-end w-full">
               <textarea
-                className="w-full bg-muted p-2 rounded text-xs font-mono"
+                className="w-full bg-foreground-muted p-2 rounded text-xs font-mono"
                 rows={6}
                 value={importString}
                 onChange={e => setImportString(e.target.value)}
@@ -174,11 +178,11 @@ export default function CookieViewer() {
                   paste
                 </button>
                 <button
-                  className="card btn px-3 py-1 rounded bg-accent font-bold w-fit card btn text-white"
+                  className="card btn px-3 py-1 rounded-lg font-bold w-fit card btn"
                   type="button"
                   onClick={handleImport}
                 >
-                  import
+                  IMPORT
                 </button>
               </div>
               {importError && <span className="text-red-500 text-xs self-start">{importError}</span>}

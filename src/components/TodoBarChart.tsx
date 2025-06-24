@@ -17,7 +17,7 @@ const TODO_KEYS = [
   { key: "todos2", label: "admin" },
   { key: "todos3", label: "study" },
   { key: "todos4", label: "work" },
-  { key: "todos5", label: "side project" },
+  { key: "todos5", label: "project" },
   { key: "todos6", label: "hobby" },
 ];
 
@@ -26,13 +26,13 @@ const BAR_COLORS = [
   'var(--color-red-dark)',    // admin
   'var(--color-yellow-dark)', // study
   'var(--color-blue-dark)',   // work
-  'var(--color-purple-dark)', // side project
+  'var(--color-purple-dark)', // project
   'var(--color-orange-dark)', // hobby
 ];
 
 export default function TodoBarChart() {
   const [counts, setCounts] = useState<number[]>([0, 0, 0, 0, 0, 0]);
-  const titles = ["main", "admin", "study", "work", "side project", "hobby"];
+  const titles = ["main", "admin", "study", "work", "project", "hobby"];
 
   useEffect(() => {
     const updateCounts = () => {
@@ -81,7 +81,7 @@ export default function TodoBarChart() {
             {TODO_KEYS.map(({ label }, i) => (
               <div key={label} className="flex items-center gap-2 w-full">
                 <span className="w-32 text-sm title pr-1 text-right">{label}</span>
-                <div className="flex-1 h-4 bg-muted rounded relative overflow-hidden min-w-[180px]">
+                <div className="flex-1 h-4 bg-background-muted rounded relative overflow-hidden min-w-[180px]">
                   <div
                     className="h-full rounded transition-all duration-700 ease-in-out"
                     style={{

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { motion } from "framer-motion";
 import ShadowIn from "./animations/ShadowIn";
 import DecryptedText from "./animations/DecryptedText";
 
@@ -65,37 +66,63 @@ const PomodoroTimer: React.FC = () => {
               maxIterations={20}
             />
           </h1>
-          <div className="flex gap-2 mb-4">
-            <button
-              className={`px-3 py-1 rounded-full text-sm font-bold ${
-                mode === "pomodoro"
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200 text-gray-700"
-              }`}
-              onClick={() => resetTimer("pomodoro")}
-            >
-              Pomodoro
-            </button>
-            <button
-              className={`px-3 py-1 rounded-full text-sm font-bold ${
-                mode === "short"
-                  ? "bg-green-500 text-white"
-                  : "bg-gray-200 text-gray-700"
-              }`}
-              onClick={() => resetTimer("short")}
-            >
-              Short Break
-            </button>
-            <button
-              className={`px-3 py-1 rounded-full text-sm font-bold ${
-                mode === "long"
-                  ? "bg-purple-500 text-white"
-                  : "bg-gray-200 text-gray-700"
-              }`}
-              onClick={() => resetTimer("long")}
-            >
-              Long Break
-            </button>
+
+          <div className="relative mb-4 justify-center">
+            {/* Animated indicator */}
+            <motion.div
+              layout
+              transition={{ type: "spring", stiffness: 120, damping: 20, mass: 0.4 }}
+              className="absolute top-0 left-0 h-full rounded-lg z-0"
+              style={{
+                width: "calc(100% / 3)",
+                background:
+                  mode === "pomodoro"
+                    ? "var(--color-blue-dark)"
+                    : mode === "short"
+                    ? "var(--color-green-dark)"
+                    : "var(--color-purple-dark)",
+                transform:
+                  mode === "pomodoro"
+                    ? "translateX(0%)"
+                    : mode === "short"
+                    ? "translateX(100%)"
+                    : "translateX(200%)",
+                transition: "transform 0.18s cubic-bezier(.4,1.2,.6,1)",
+              }}
+            />
+            {/* Mode buttons grid */}
+            <div className="relative grid grid-cols-3 gap-2 z-10">
+              <button
+                className={`px-3 py-1 rounded-lg text-sm font-bold transition-colors duration-200 ${
+                  mode === "pomodoro"
+                    ? "text-foreground"
+                    : "text-foreground-muted"
+                }`}
+                onClick={() => resetTimer("pomodoro")}
+              >
+                pomodoro
+              </button>
+              <button
+                className={`px-3 py-1 rounded-lg text-sm font-bold transition-colors duration-200 ${
+                  mode === "short"
+                    ? "text-foreground"
+                    : "text-foreground-muted"
+                }`}
+                onClick={() => resetTimer("short")}
+              >
+                short break
+              </button>
+              <button
+                className={`px-3 py-1 rounded-lg text-sm font-bold transition-colors duration-200 ${
+                  mode === "long"
+                    ? "text-foreground"
+                    : "text-foreground-muted"
+                }`}
+                onClick={() => resetTimer("long")}
+              >
+                long break
+              </button>
+            </div>
           </div>
           <div className="relative flex flex-col items-center mb-4">
             <span className="text-7xl custom-font-nothing z-10">
@@ -113,27 +140,27 @@ const PomodoroTimer: React.FC = () => {
               }}
             />
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-4 justify-center">
             {isRunning ? (
               <button
-                className="px-4 py-2 bg-red-500 text-white rounded-lg font-bold btn"
+                className="card btn px-4 py-0 rounded-lg font-bold"
                 onClick={stopTimer}
               >
-                Pause
+                pause
               </button>
             ) : (
               <button
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg font-bold btn"
+                className="card btn px-4 py-0 rounded-lg font-bold"
                 onClick={startTimer}
               >
-                Start
+                start
               </button>
             )}
             <button
-              className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg font-bold btn"
+              className="px-4 py-2 text-foreground-muted rounded-lg font-bold"
               onClick={() => resetTimer()}
             >
-              Reset
+              reset
             </button>
           </div>
         </main>
