@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import ShadowIn from "./animations/ShadowIn";
 import DecryptedText from "./animations/DecryptedText";
 
+// (Keep your Todo, get/set cookie, and gradient functions as they are)
 export interface Todo {
   text: string;
   completed: boolean;
@@ -21,6 +22,7 @@ function getTodosFromCookie(key: string): Todo[] {
 }
 
 function setTodosToCookie(key: string, todos: Todo[]) {
+  if (typeof document === "undefined") return;
   document.cookie = `${key}=${encodeURIComponent(
     JSON.stringify(todos)
   )}; path=/; max-age=31536000`;
@@ -45,23 +47,65 @@ function getRandomGradient() {
   return gradientMap[gradientKeys[idx]];
 }
 
+
 export function TodoList({ title, cookieKey, className, accentColor = '#000000' }: { title: string; cookieKey: string; className?: string; accentColor?: string }) {
+  // ==================================================================
+  // FIX: All hooks are now declared at the top level, unconditionally.
+  // ==================================================================
+  const [mounted, setMounted] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [gradientsForTodos, setGradientsForTodos] = useState<string[]>([]);
 
   useEffect(() => {
-    setTodos(getTodosFromCookie(cookieKey));
-    setHasLoaded(true);
-  }, [cookieKey]);
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
-    if (hasLoaded) {
-      setTodosToCookie(cookieKey, todos);
-      window.dispatchEvent(new Event("todos-updated"));
+    // We can still gate the logic inside the hook
+    if (mounted) {
+      setTodos(getTodosFromCookie(cookieKey));
+      setHasLoaded(true);
     }
-  }, [todos, cookieKey, hasLoaded]);
+  }, [cookieKey, mounted]);
 
+  useEffect(() => {
+    if (hasLoaded && mounted) {
+      setTodosToCookie(cookieKey, todos);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("todos-updated"));
+      }
+    }
+  }, [todos, cookieKey, hasLoaded, mounted]);
+
+  useEffect(() => {
+    if (mounted) {
+      setGradientsForTodos((prev) => {
+        if (prev.length === todos.length && todos.every((t, i) => prev[i] && t.text === todos[i].text)) {
+          return prev;
+        }
+        const newGradients: string[] = [];
+        todos.forEach((todo, idx) => {
+          const prevIdx = prev.findIndex((_, i) => todos[idx].text === todos[i].text);
+          if (prevIdx !== -1 && prev[prevIdx]) {
+            newGradients.push(prev[prevIdx]);
+          } else {
+            newGradients.push(getRandomGradient());
+          }
+        });
+        return newGradients;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todos, mounted]);
+
+  // The conditional return now only prevents rendering, it does not change the order of hooks.
+  if (!mounted) {
+    return null;
+  }
+  
+  // The rest of your component logic and JSX remains the same.
   const addTodo = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -83,34 +127,9 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
 
   const remaining = todos.filter((t) => !t.completed).length;
 
-  // Memoize the random gradients for each todo item so they persist across renders and additions
-  const [gradientsForTodos, setGradientsForTodos] = useState<string[]>([]);
-
-  useEffect(() => {
-    // Assign a gradient for each todo based on its text (or unique id if available)
-    setGradientsForTodos((prev) => {
-      // If the number of todos is the same and the text matches, keep the gradients
-      if (prev.length === todos.length && todos.every((t, i) => prev[i] && t.text === todos[i].text)) {
-        return prev;
-      }
-      // Otherwise, assign a gradient for each todo, reusing previous ones if the text matches
-      const newGradients: string[] = [];
-      todos.forEach((todo, idx) => {
-        // Try to find the previous index for this todo text
-        const prevIdx = prev.findIndex((_, i) => todos[idx].text === todos[i].text);
-        if (prevIdx !== -1 && prev[prevIdx]) {
-          newGradients.push(prev[prevIdx]);
-        } else {
-          newGradients.push(getRandomGradient());
-        }
-      });
-      return newGradients;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todos]);
-
   return (
     <ShadowIn className="w-full" shadowColor="white">
+      {/* ... your JSX remains unchanged ... */}
       <div className={`card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto relative overflow-hidden ${className ?? ''}`}>
         {/* Accent color tape in the top right corner */}
         <div
