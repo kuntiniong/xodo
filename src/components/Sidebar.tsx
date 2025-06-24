@@ -21,14 +21,20 @@ export default function Sidebar() {
     <>
       {/* Mobile menu - hidden on large screens where the grid is active */}
       <button
-        className="lg:hidden fixed top-6 left-4 z-50 p-2 rounded bg-background border border-border shadow"
+        className="card rounded-lg lg:hidden fixed top-4 right-4 z-50 p-2"
         onClick={() => setSidebarOpen(true)}
         aria-label="Open sidebar"
       >
         <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
-          <rect y="4" width="24" height="2" rx="1" fill="currentColor" />
-          <rect y="11" width="24" height="2" rx="1" fill="currentColor" />
-          <rect y="18" width="24" height="2" rx="1" fill="currentColor" />
+          <defs>
+            <linearGradient id="menu-gradient" x1="0" y1="0" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+              <stop stopColor="var(--color-link-from)" />
+              <stop offset="1" stopColor="var(--color-link-to)" />
+            </linearGradient>
+          </defs>
+          <rect y="4" width="24" height="2" rx="1" fill="url(#menu-gradient)" />
+          <rect y="11" width="24" height="2" rx="1" fill="url(#menu-gradient)" />
+          <rect y="18" width="24" height="2" rx="1" fill="url(#menu-gradient)" />
         </svg>
       </button>
 
@@ -45,15 +51,27 @@ export default function Sidebar() {
         }`}
       >
         <button
-          className="absolute top-4 right-4 p-2 rounded bg-background border border-border"
+          className="card absolute top-4 right-4 p-2 rounded-lg"
           onClick={() => setSidebarOpen(false)}
           aria-label="Close sidebar"
         >
           <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-            <path d="M6 6l12 12M6 18L18 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <defs>
+              <linearGradient id="close-gradient" x1="0" y1="0" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+                <stop stopColor="var(--color-link-from)" />
+                <stop offset="1" stopColor="var(--color-link-to)" />
+              </linearGradient>
+            </defs>
+            <path d="M6 6l12 12M6 18L18 6" stroke="url(#close-gradient)" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
-        <div className="flex flex-col h-fit gap-8 p-8 pt-16">
+        {/* 
+          MODIFIED: This container now uses a responsive grid.
+          - `grid`: Enables grid layout.
+          - `grid-cols-1`: Sets a single column layout for mobile (default).
+          - `sm:grid-cols-2`: Switches to a two-column layout for 'sm' screens and up.
+        */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 p-8 pt-16">
           <PomodoroTimer />
           <TodoBarChart />
           <CookieViewer />

@@ -56,7 +56,8 @@ export default function TodoGrid({ allTodos }: { allTodos: TodoItem[] }) {
       {allTodos.map((todo) => (
         <div
           key={todo.cookieKey}
-          className="grid-item w-full lg:w-[calc((100%-32px)/2)] mb-8"
+          // This specific sequence of classes creates the 1 -> 2 -> 1 -> 2 column layout
+          className="grid-item w-full sm:w-[calc((100%-32px)/2)] lg:w-full xl:w-[calc((100%-32px)/2)] mb-8"
         >
           <TodoList
             title={todo.title}
