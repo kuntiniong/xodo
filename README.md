@@ -4,3 +4,4 @@
 - [ ] fix layout for tablet hamburger menu
 - [ ] add footer
 - [ ] fix button ui
+- [ ] refactor data storage logic with localStorage instead of cookies
