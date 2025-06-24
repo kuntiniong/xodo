@@ -23,8 +23,8 @@ export default function Home() {
           columnClassName="masonry-column flex flex-col gap-8"
         >
           <TodoList title="main" cookieKey="todos1" />
-          <TodoList title="administrative" cookieKey="todos2" />
-          <TodoList title="academic" cookieKey="todos3" />
+          <TodoList title="admin" cookieKey="todos2" />
+          <TodoList title="study" cookieKey="todos3" />
           <TodoList title="work" cookieKey="todos4" />
           <TodoList title="side project" cookieKey="todos5" />
         </Masonry>
