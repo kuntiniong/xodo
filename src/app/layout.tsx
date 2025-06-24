@@ -12,8 +12,8 @@ import {
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "Kun's Personal Site",
-  description: "Kun Tin Iong's personal website",
+  title: "To do list",
+  description: "Retrofuturistic to do list web app",
   icons: {
     icon: "/favicon.png",
   },
