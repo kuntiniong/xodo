@@ -14,15 +14,16 @@ function getAllCookies(): Record<string, string> {
 // List of todo keys to check
 const TODO_KEYS = [
   { key: "todos1", label: "main" },
-  { key: "todos2", label: "administrative" },
-  { key: "todos3", label: "academic" },
+  { key: "todos2", label: "admin" },
+  { key: "todos3", label: "study" },
   { key: "todos4", label: "work" },
   { key: "todos5", label: "side project" },
+  { key: "todos6", label: "hobby" },
 ];
 
 export default function TodoBarChart() {
-  const [counts, setCounts] = useState<number[]>([0, 0, 0, 0, 0]);
-  const titles = ["main", "administrative", "academic", "work", "side project"];
+  const [counts, setCounts] = useState<number[]>([0, 0, 0, 0, 0, 0]);
+  const titles = ["main", "admin", "study", "work", "side project", "hobby"];
 
   useEffect(() => {
     const updateCounts = () => {
@@ -70,14 +71,14 @@ export default function TodoBarChart() {
           <div className="flex flex-col gap-3 w-full">
             {TODO_KEYS.map(({ label }, i) => (
               <div key={label} className="flex items-center gap-2 w-full">
-                <span className="w-32 text-sm font-semibold text-right">{label}</span>
+                <span className="w-32 text-sm title pr-1 text-right">{label}</span>
                 <div className="flex-1 h-4 bg-muted rounded relative overflow-hidden min-w-[180px]">
                   <div
                     className="h-full bg-accent rounded"
                     style={{ width: `${(counts[i] / max) * 100}%`, minWidth: counts[i] > 0 ? 24 : 0 }}
                   ></div>
                 </div>
-                <span className="w-8 text-xs text-right">{counts[i]}</span>
+                <span className="w-8 text-xs text-right custom-font-nothing">{counts[i]}</span>
               </div>
             ))}
           </div>

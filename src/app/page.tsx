@@ -27,6 +27,7 @@ export default function Home() {
           <TodoList title="study" cookieKey="todos3" />
           <TodoList title="work" cookieKey="todos4" />
           <TodoList title="side project" cookieKey="todos5" />
+          <TodoList title="hobby" cookieKey="todos6" />
         </Masonry>
       </div>
       {/* CookieViewer column (1/3 of layout) */}
