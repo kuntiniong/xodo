@@ -11,6 +11,8 @@
   --color-link: linear-gradient(to right, var(--color-link-from), var(--color-link-to));
   --color-link-hover: #00ffcc;
 
+  --color-accent: #00bfff;
+
   /* fonts */
   --font-main: var(--font-helvetica-neue-light);
   --font-title: var(--font-helvetica-neue-bold);
@@ -31,6 +33,10 @@
   .btn {
     @apply bg-clip-text text-transparent transition-colors duration-700;
     background-image: var(--color-link);
+  }
+
+  .bg-accent {
+    background-color: var(--color-accent) !important;
   }
 
   .btn:hover {
@@ -62,7 +68,7 @@
   }
 
   .custom-font-nothing {
-    @apply font-accent opacity-70 tracking-[-0.1em];
+    @apply font-accent opacity-70 tracking-[-0.07em];
   }
 
   .custom-font-outline {

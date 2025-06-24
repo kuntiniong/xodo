@@ -48,9 +48,10 @@ export default function RootLayout({
             style={{ objectFit: "cover" }}
             priority
             sizes="100vw"
+            className="blur-[3px]"
           />
         </div>
-        <div className="max-w-7xl mx-auto px-1 sm:px-6 lg:px-18 -mt-8">
+        <div className="mx-auto px-1 sm:px-6 lg:px-18 -mt-8">
           {/* Added max-width container */}
           {children}
         </div>

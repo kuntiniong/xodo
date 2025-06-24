@@ -48,14 +48,19 @@ function getRandomGradient() {
 export function TodoList({ title, cookieKey }: { title: string; cookieKey: string }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
     setTodos(getTodosFromCookie(cookieKey));
+    setHasLoaded(true);
   }, [cookieKey]);
 
   useEffect(() => {
-    setTodosToCookie(cookieKey, todos);
-  }, [todos, cookieKey]);
+    if (hasLoaded) {
+      setTodosToCookie(cookieKey, todos);
+      window.dispatchEvent(new Event("todos-updated"));
+    }
+  }, [todos, cookieKey, hasLoaded]);
 
   const addTodo = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -106,7 +111,7 @@ export function TodoList({ title, cookieKey }: { title: string; cookieKey: strin
 
   return (
     <ShadowIn className="w-full" shadowColor="white">
-      <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto mt-6">
+      <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
           <h1 className="title text-5xl text-left my-2">
             <DecryptedText text={title} animateOn="view" className="title" speed={50} maxIterations={20} />
@@ -117,11 +122,11 @@ export function TodoList({ title, cookieKey }: { title: string; cookieKey: strin
             className="flex w-full gap-2 items-center border-b border-foreground pb-2 mb-2"
           >
             <input
-              className="flex-1 outline-none border-none bg-transparent text-lg placeholder-gray-400 text-foreground font-link"
+              className="flex-1 outline-none border-none bg-transparent text-lg placeholder-gray-400 text-foreground custom-font-nothing"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Add new task"
+              placeholder="add new task"
               aria-label="Add new task"
             />
             <button
@@ -134,8 +139,8 @@ export function TodoList({ title, cookieKey }: { title: string; cookieKey: strin
           </form>
           <ul className="w-full flex flex-col gap-4">
             {todos.length === 0 && (
-              <li className="text-muted text-center custom-font-nothing">
-                No todos yet.
+              <li className="text-muted text-center custom-font-nothing text-lg">
+                no todos yet.
               </li>
             )}
             {todos.map((todo, idx) => (
@@ -194,7 +199,7 @@ export function TodoList({ title, cookieKey }: { title: string; cookieKey: strin
           </ul>
           <div className="mt-2 text-foreground text-base font-tag">
             Your remaining todos : 
-            <span className="custom-font-nothing ml-2">{remaining}</span>
+            <span className="custom-font-outline text-5xl ml-2">{remaining}</span>
           </div>
         </main>
       </div>
