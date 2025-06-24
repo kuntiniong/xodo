@@ -21,6 +21,15 @@ const TODO_KEYS = [
   { key: "todos6", label: "hobby" },
 ];
 
+const BAR_COLORS = [
+  'var(--color-green-dark)',   // main
+  'var(--color-red-dark)',    // admin
+  'var(--color-yellow-dark)', // study
+  'var(--color-blue-dark)',   // work
+  'var(--color-purple-dark)', // side project
+  'var(--color-orange-dark)', // hobby
+];
+
 export default function TodoBarChart() {
   const [counts, setCounts] = useState<number[]>([0, 0, 0, 0, 0, 0]);
   const titles = ["main", "admin", "study", "work", "side project", "hobby"];
@@ -60,7 +69,7 @@ export default function TodoBarChart() {
     };
   }, []);
 
-  // Find the max for scaling
+  // Find the max for scaling 
   const max = Math.max(...counts, 1);
 
   return (
@@ -74,8 +83,12 @@ export default function TodoBarChart() {
                 <span className="w-32 text-sm title pr-1 text-right">{label}</span>
                 <div className="flex-1 h-4 bg-muted rounded relative overflow-hidden min-w-[180px]">
                   <div
-                    className="h-full bg-accent rounded"
-                    style={{ width: `${(counts[i] / max) * 100}%`, minWidth: counts[i] > 0 ? 24 : 0 }}
+                    className="h-full rounded transition-all duration-700 ease-in-out"
+                    style={{
+                      width: `${(counts[i] / max) * 100}%`,
+                      minWidth: counts[i] > 0 ? 24 : 0,
+                      background: BAR_COLORS[i] || 'var(--color-muted)',
+                    }}
                   ></div>
                 </div>
                 <span className="w-8 text-xs text-right custom-font-nothing">{counts[i]}</span>

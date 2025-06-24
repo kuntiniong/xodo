@@ -109,14 +109,14 @@ export default function CookieViewer() {
                 onClick={() => setShowExport((v) => !v)}
                 type="button"
               >
-                {showExport ? "Hide Export" : "Export"}
+                {showExport ? "hide export" : "export"}
               </button>
               <button
                 className="btn px-3 py-1 rounded bg-muted font-bold mb-2"
                 onClick={() => setShowImport((v) => !v)}
                 type="button"
               >
-                {showImport ? "Hide Import" : "Import"}
+                {showImport ? "hide import" : "import"}
               </button>
             </div>
             <div className="flex justify-end">
@@ -147,7 +147,7 @@ export default function CookieViewer() {
                   setTimeout(() => setCopied(false), 1200);
                 }}
               >
-                {copied ? "Copied!" : "Copy"}
+                {copied ? "copied!" : "copy"}
               </button>
             </div>
           )}
@@ -171,14 +171,14 @@ export default function CookieViewer() {
                     } catch {}
                   }}
                 >
-                  Paste
+                  paste
                 </button>
                 <button
                   className="card btn px-3 py-1 rounded bg-accent font-bold w-fit card btn text-white"
                   type="button"
                   onClick={handleImport}
                 >
-                  Import
+                  import
                 </button>
               </div>
               {importError && <span className="text-red-500 text-xs self-start">{importError}</span>}

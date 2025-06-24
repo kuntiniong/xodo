@@ -45,7 +45,7 @@ function getRandomGradient() {
   return gradientMap[gradientKeys[idx]];
 }
 
-export function TodoList({ title, cookieKey }: { title: string; cookieKey: string }) {
+export function TodoList({ title, cookieKey, className, accentColor = '#000000' }: { title: string; cookieKey: string; className?: string; accentColor?: string }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -111,7 +111,23 @@ export function TodoList({ title, cookieKey }: { title: string; cookieKey: strin
 
   return (
     <ShadowIn className="w-full" shadowColor="white">
-      <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
+      <div className={`card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto relative overflow-hidden ${className ?? ''}`}>
+        {/* Accent color tape in the top right corner */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 200,
+            height: 80,
+            background: accentColor, // use prop
+            borderTopRightRadius: 24, // match card radius
+            transform: 'translate(30%,-110%) rotate(45deg)',
+            zIndex: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+          }}
+          aria-hidden="true"
+        />
         <main className="flex flex-col gap-6 w-full max-w-md">
           <h1 className="title text-5xl text-left my-2">
             <DecryptedText text={title} animateOn="view" className="title" speed={50} maxIterations={20} />
@@ -146,7 +162,7 @@ export function TodoList({ title, cookieKey }: { title: string; cookieKey: strin
             {todos.map((todo, idx) => (
               <li
                 key={idx}
-                className={`card flex rounded-2xl items-center justify-between px-6 py-4 shadow-sm ${todo.completed ? 'bg-background' : ''}`}
+                className={`card flex rounded-2xl items-center justify-between px-6 py-3 shadow-sm ${todo.completed ? 'bg-background' : ''}`}
                 style={todo.completed ? {
                   position: 'relative',
                   overflow: 'hidden',
@@ -197,11 +213,15 @@ export function TodoList({ title, cookieKey }: { title: string; cookieKey: strin
               </li>
             ))}
           </ul>
-          <div className="mt-2 text-foreground text-base font-tag">
-            Your remaining todos : 
-            <span className="custom-font-outline text-5xl ml-2">{remaining}</span>
+          {/* Make the label and number side by side */}
+          <div className="mt-2 flex flex-row items-end justify-end text-foreground text-base font-tag text-right relative min-h-[60px] gap-3 -mb-[0.9em]">
+            <span>Your remaining todos :</span>
+            <span className="custom-font-outline text-7xl pointer-events-none leading-none -mb-[0.39em] -mr-3">
+              {remaining}
+            </span>
           </div>
         </main>
+        {/* Remove the absolutely positioned number at the bottom right */}
       </div>
     </ShadowIn>
   );

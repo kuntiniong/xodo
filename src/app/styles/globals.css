@@ -11,7 +11,13 @@
   --color-link: linear-gradient(to right, var(--color-link-from), var(--color-link-to));
   --color-link-hover: #00ffcc;
 
-  --color-accent: #00bfff;
+  /* darker shades */
+  --color-green-dark: #16321f;
+  --color-red-dark: #541419;
+  --color-yellow-dark: #8c7e0b;
+  --color-blue-dark: #16214a;
+  --color-purple-dark: #2c1542;
+  --color-orange-dark: #8c470b;
 
   /* fonts */
   --font-main: var(--font-helvetica-neue-light);

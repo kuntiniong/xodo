@@ -22,12 +22,12 @@ export default function Home() {
           className="flex w-full gap-8"
           columnClassName="masonry-column flex flex-col gap-8"
         >
-          <TodoList title="main" cookieKey="todos1" />
-          <TodoList title="admin" cookieKey="todos2" />
-          <TodoList title="study" cookieKey="todos3" />
-          <TodoList title="work" cookieKey="todos4" />
-          <TodoList title="side project" cookieKey="todos5" />
-          <TodoList title="hobby" cookieKey="todos6" />
+          <TodoList title="main" cookieKey="todos1" accentColor="var(--color-green-dark)"/>
+          <TodoList title="admin" cookieKey="todos2" accentColor="var(--color-red-dark)" />
+          <TodoList title="study" cookieKey="todos3" accentColor="var(--color-yellow-dark)"/>
+          <TodoList title="work" cookieKey="todos4" accentColor="var(--color-blue-dark)"/>
+          <TodoList title="side project" cookieKey="todos5" accentColor="var(--color-purple-dark)"/>
+          <TodoList title="hobby" cookieKey="todos6" accentColor="var(--color-orange-dark)"/>
         </Masonry>
       </div>
       {/* CookieViewer column (1/3 of layout) */}
