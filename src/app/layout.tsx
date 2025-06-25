@@ -51,7 +51,7 @@ export default function RootLayout({
             className="blur-[3px]"
           />
         </div>
-        <div className="mx-auto px-1 sm:px-6 lg:px-18 -mt-8">
+        <div className="mx-auto px-1 sm:px-6 lg:px-18 -mt-8 mb-8">
           {/* Added max-width container */}
           {children}
         </div>
