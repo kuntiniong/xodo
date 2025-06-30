@@ -10,6 +10,7 @@ import {
   jetBrainsMonoBold,
 } from "@/app/styles/font";
 import Image from "next/image";
+import Footer from "../components/footer/Footer";
 
 export const metadata: Metadata = {
   title: "To do list",
@@ -55,6 +56,7 @@ export default function RootLayout({
           {/* Added max-width container */}
           {children}
         </div>
+          <Footer />
       </body>
     </html>
   );

@@ -1,60 +1,49 @@
 import React, { useState, useEffect, useRef } from "react";
-import ShadowIn from "./animations/ShadowIn";
+import ShadowIn from "@/components/animations/ShadowIn";
 
-const getAllCookies = () => {
-  if (typeof document === "undefined") return {};
-  return document.cookie.split("; ").reduce((acc, cookie) => {
-    const [key, ...v] = cookie.split("=");
-    acc[key] = decodeURIComponent(v.join("="));
-    return acc;
-  }, {} as Record<string, string>);
+// Helper to get all localStorage items as an object
+const getAllLocalStorage = (): Record<string, string> => {
+  if (typeof window === "undefined" || !window.localStorage) return {};
+  const storage: Record<string, string> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key) {
+      storage[key] = localStorage.getItem(key) || "";
+    }
+  }
+  return storage;
 };
 
-export default function CookieViewer() {
-  const [cookies, setCookies] = useState<Record<string, string>>(getAllCookies());
-  const [input, setInput] = useState("");
-  const [cookieValue, setCookieValue] = useState<string | null>(null);
-  const lastCookiesRef = useRef("");
+export default function LocalStorageViewer() {
+  const [items, setItems] = useState<Record<string, string>>(getAllLocalStorage());
+  const lastItemsRef = useRef("");
 
-  // Poll for cookie changes every 500ms
+  // Poll for localStorage changes every 500ms
   useEffect(() => {
     const interval = setInterval(() => {
-      const all = getAllCookies();
+      const all = getAllLocalStorage();
       const serialized = JSON.stringify(all);
-      if (serialized !== lastCookiesRef.current) {
-        setCookies(all);
-        lastCookiesRef.current = serialized;
-        // If a cookie is being viewed, update its value
-        if (input && input in all) {
-          setCookieValue(all[input]);
-        } else if (input) {
-          setCookieValue(null);
-        }
+      if (serialized !== lastItemsRef.current) {
+        setItems(all);
+        lastItemsRef.current = serialized;
       }
     }, 500);
     return () => clearInterval(interval);
-  }, [input]);
+  }, []);
 
-  const handleReadCookie = (e: React.FormEvent) => {
-    e.preventDefault();
-    const all = getAllCookies();
-    setCookies(all);
-    setCookieValue(input in all ? all[input] : null);
-  };
-
-  // Helper: get only todo cookies
-  const getTodoCookies = () => {
-    const todoCookies: Record<string, string> = {};
-    Object.keys(cookies).forEach((key) => {
+  // Helper: get only localStorage items that are related to todos.
+  const getTodoItems = () => {
+    const todoItems: Record<string, string> = {};
+    Object.keys(items).forEach((key) => {
       if (/^todos\d+$/.test(key)) {
-        todoCookies[key] = cookies[key];
+        todoItems[key] = items[key];
       }
     });
-    return todoCookies;
+    return todoItems;
   };
 
   const [showExport, setShowExport] = useState(false);
-  const exportString = JSON.stringify(getTodoCookies(), null, 2);
+  const exportString = JSON.stringify(getTodoItems(), null, 2);
   const [showImport, setShowImport] = useState(false);
   const [importString, setImportString] = useState("");
   const [importError, setImportError] = useState("");
@@ -67,33 +56,37 @@ export default function CookieViewer() {
       if (!data || typeof data !== "object") throw new Error("Invalid format");
       Object.entries(data).forEach(([key, value]) => {
         if (/^todos\d+$/.test(key) && typeof value === "string") {
-          document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=31536000`;
+          localStorage.setItem(key, value);
         }
       });
       setImportString("");
       setShowImport(false);
-      // JIT update: force a reload so all components see the new cookies immediately
+      // Reload to update all components with the new localStorage values.
       window.location.reload();
     } catch (e) {
       setImportError("Invalid JSON or format.");
     }
   };
 
-  const deleteCookie = (key: string) => {
-    document.cookie = `${key}=; path=/; max-age=0`;
-    setCookies(getAllCookies());
+  const deleteItem = (key: string) => {
+    localStorage.removeItem(key);
+    setItems(getAllLocalStorage());
   };
 
-  const cleanUpCookies = () => {
-    // Remove all todos cookies (todos1, todos2, etc) and the base todos key
+  const cleanUpItems = () => {
+    // Remove all todos localStorage items (e.g. todos1, todos2, etc.)
     let changed = false;
     for (let i = 1; i <= 20; i++) {
-      document.cookie = `todos${i}=; path=/; max-age=0`;
+      if (localStorage.getItem(`todos${i}`) !== null) {
+        localStorage.removeItem(`todos${i}`);
+        changed = true;
+      }
+    }
+    // Optionally, remove a base 'todos' key or other related keys.
+    if (localStorage.getItem("todos") !== null) {
+      localStorage.removeItem("todos");
       changed = true;
     }
-    document.cookie = `todos=; path=/; max-age=0`;
-    document.cookie = `__next_hmr_refresh_hash__=; path=/; max-age=0`;
-    changed = true;
     if (changed) window.location.reload();
   };
 
@@ -102,6 +95,7 @@ export default function CookieViewer() {
       <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
           <h2 className="text-5xl title text-left my-2">save</h2>
+
           <div className="mb-4 grid grid-cols-3 gap-2 w-full">
             <div className="col-span-2 flex gap-2">
               <button
@@ -121,10 +115,14 @@ export default function CookieViewer() {
             </div>
             <div className="flex justify-end">
               <button
-                className="card btn px-3 py-1 rounded-lg font-bold mb-2"
+                className="btn px-3 py-1 rounded-lg font-bold mb-2"
                 onClick={() => {
-                  if (window.confirm("Are you sure you want to reset all todos cookies? This cannot be undone.")) {
-                    cleanUpCookies();
+                  if (
+                    window.confirm(
+                      "Are you sure you want to reset all todos localStorage items? This cannot be undone."
+                    )
+                  ) {
+                    cleanUpItems();
                   }
                 }}
                 type="button"
@@ -140,7 +138,7 @@ export default function CookieViewer() {
                 rows={6}
                 readOnly
                 value={exportString}
-                onFocus={e => e.target.select()}
+                onFocus={(e) => e.target.select()}
               />
               <button
                 className="btn px-3 py-1 rounded bg-accent font-bold w-fit"
@@ -161,7 +159,7 @@ export default function CookieViewer() {
                 className="w-full bg-foreground-muted p-2 rounded text-xs font-mono"
                 rows={6}
                 value={importString}
-                onChange={e => setImportString(e.target.value)}
+                onChange={(e) => setImportString(e.target.value)}
                 placeholder="Paste exported todos JSON here"
               />
               <div className="flex gap-2">
@@ -178,14 +176,18 @@ export default function CookieViewer() {
                   paste
                 </button>
                 <button
-                  className="card btn px-3 py-1 rounded-lg font-bold w-fit card btn"
+                  className="btn px-3 py-1 rounded-lg font-bold w-fit"
                   type="button"
                   onClick={handleImport}
                 >
                   IMPORT
                 </button>
               </div>
-              {importError && <span className="text-red-500 text-xs self-start">{importError}</span>}
+              {importError && (
+                <span className="text-red-500 text-xs self-start">
+                  {importError}
+                </span>
+              )}
             </div>
           )}
         </main>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import PomodoroTimer from "./PomodoroTimer";
 import TodoBarChart from "./TodoBarChart";
-import CookieViewer from "./CookieViewer";
+import LocalStorageViewer from "./LocalStorageViewer";
 
 export default function Sidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -27,7 +27,14 @@ export default function Sidebar() {
       >
         <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
           <defs>
-            <linearGradient id="menu-gradient" x1="0" y1="0" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+            <linearGradient
+              id="menu-gradient"
+              x1="0"
+              y1="0"
+              x2="24"
+              y2="0"
+              gradientUnits="userSpaceOnUse"
+            >
               <stop stopColor="var(--color-link-from)" />
               <stop offset="1" stopColor="var(--color-link-to)" />
             </linearGradient>
@@ -57,24 +64,34 @@ export default function Sidebar() {
         >
           <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
             <defs>
-              <linearGradient id="close-gradient" x1="0" y1="0" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+              <linearGradient
+                id="close-gradient"
+                x1="0"
+                y1="0"
+                x2="24"
+                y2="0"
+                gradientUnits="userSpaceOnUse"
+              >
                 <stop stopColor="var(--color-link-from)" />
                 <stop offset="1" stopColor="var(--color-link-to)" />
               </linearGradient>
             </defs>
-            <path d="M6 6l12 12M6 18L18 6" stroke="url(#close-gradient)" strokeWidth="2" strokeLinecap="round" />
+            <path
+              d="M6 6l12 12M6 18L18 6"
+              stroke="url(#close-gradient)"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
           </svg>
         </button>
-        {/* 
-          MODIFIED: This container now uses a responsive grid.
-          - `grid`: Enables grid layout.
-          - `grid-cols-1`: Sets a single column layout for mobile (default).
-          - `sm:grid-cols-2`: Switches to a two-column layout for 'sm' screens and up.
+        {/* The container now uses a responsive grid:
+            - `grid-cols-1` for mobile,
+            - `sm:grid-cols-2` on small screens and up.
         */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 p-8 pt-16">
           <PomodoroTimer />
           <TodoBarChart />
-          <CookieViewer />
+          <LocalStorageViewer />
         </div>
       </div>
 
@@ -83,7 +100,7 @@ export default function Sidebar() {
         <div className="sticky top-8 flex flex-col gap-8">
           <PomodoroTimer />
           <TodoBarChart />
-          <CookieViewer />
+          <LocalStorageViewer />
         </div>
       </div>
     </>

@@ -1,33 +1,65 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import ShadowIn from "./animations/ShadowIn";
-import DecryptedText from "./animations/DecryptedText";
+import ShadowIn from "@/components/animations/ShadowIn";
+import DecryptedText from "@/components/animations/DecryptedText";
 
-// (Keep your Todo, get/set cookie, and gradient functions as they are)
+// Todo interface remains the same
 export interface Todo {
   text: string;
   completed: boolean;
 }
 
-function getTodosFromCookie(key: string): Todo[] {
-  if (typeof document === "undefined") return [];
-  const match = document.cookie.match(new RegExp(`${key}=([^;]*)`));
-  if (!match) return [];
+// ==================================================================
+// MODIFICATION: Replaced cookie functions with localStorage functions
+// ==================================================================
+
+/**
+ * Retrieves the list of todos from localStorage.
+ * @param key The key to use for storing the todos in localStorage.
+ * @returns An array of Todo items.
+ */
+function getTodosFromLocalStorage(key: string): Todo[] {
+  // Check for SSR environments where `window` is not defined.
+  if (typeof window === "undefined" || !window.localStorage) {
+    return [];
+  }
+  
+  const savedTodos = window.localStorage.getItem(key);
+  if (!savedTodos) {
+    return [];
+  }
+
   try {
-    return JSON.parse(decodeURIComponent(match[1]));
-  } catch {
+    // Parse the stored JSON string back into an array.
+    return JSON.parse(savedTodos);
+  } catch (error) {
+    console.error("Failed to parse todos from localStorage:", error);
     return [];
   }
 }
 
-function setTodosToCookie(key: string, todos: Todo[]) {
-  if (typeof document === "undefined") return;
-  document.cookie = `${key}=${encodeURIComponent(
-    JSON.stringify(todos)
-  )}; path=/; max-age=31536000`;
+/**
+ * Saves the list of todos to localStorage.
+ * @param key The key to use for storing the todos.
+ * @param todos The array of Todo items to save.
+ */
+function setTodosToLocalStorage(key: string, todos: Todo[]) {
+  // Check for SSR environments.
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  
+  try {
+    // Convert the todos array to a JSON string and save it.
+    window.localStorage.setItem(key, JSON.stringify(todos));
+  } catch (error) {
+    console.error("Failed to save todos to localStorage:", error);
+  }
 }
 
+
+// The gradient utility functions remain unchanged.
 const gradientMap = {
   tealPurple: "linear-gradient(135deg, #3A5A5A, #5A3A5A)",
   oliveGreen: "linear-gradient(135deg, #5A5A3A, #3A5A3A)",
@@ -47,38 +79,42 @@ function getRandomGradient() {
   return gradientMap[gradientKeys[idx]];
 }
 
-
-export function TodoList({ title, cookieKey, className, accentColor = '#000000' }: { title: string; cookieKey: string; className?: string; accentColor?: string }) {
-  // ==================================================================
-  // FIX: All hooks are now declared at the top level, unconditionally.
-  // ==================================================================
+// MODIFICATION: Renamed `cookieKey` prop to `storageKey` for clarity.
+export function TodoList({ title, storageKey, className, accentColor = '#000000' }: { title: string; storageKey: string; className?: string; accentColor?: string }) {
   const [mounted, setMounted] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
   const [gradientsForTodos, setGradientsForTodos] = useState<string[]>([]);
 
+  // This effect runs once on mount to indicate client-side rendering.
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // This effect loads the initial todos from localStorage once the component is mounted.
   useEffect(() => {
-    // We can still gate the logic inside the hook
     if (mounted) {
-      setTodos(getTodosFromCookie(cookieKey));
+      // MODIFICATION: Call the new localStorage function.
+      setTodos(getTodosFromLocalStorage(storageKey));
       setHasLoaded(true);
     }
-  }, [cookieKey, mounted]);
+  }, [storageKey, mounted]);
 
+  // This effect saves the todos to localStorage whenever they change.
   useEffect(() => {
+    // Ensure we only save after initial load and on the client.
     if (hasLoaded && mounted) {
-      setTodosToCookie(cookieKey, todos);
+      // MODIFICATION: Call the new localStorage function.
+      setTodosToLocalStorage(storageKey, todos);
+      // This event can be used by other components to react to todo list changes.
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("todos-updated"));
       }
     }
-  }, [todos, cookieKey, hasLoaded, mounted]);
+  }, [todos, storageKey, hasLoaded, mounted]);
 
+  // This effect manages the random gradients for each todo item.
   useEffect(() => {
     if (mounted) {
       setGradientsForTodos((prev) => {
@@ -100,12 +136,12 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, mounted]);
 
-  // The conditional return now only prevents rendering, it does not change the order of hooks.
+  // Prevent rendering on the server or before the initial client-side mount.
   if (!mounted) {
     return null;
   }
   
-  // The rest of your component logic and JSX remains the same.
+  // Component logic for adding, removing, and toggling todos remains the same.
   const addTodo = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -127,11 +163,10 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
 
   const remaining = todos.filter((t) => !t.completed).length;
 
+  // The JSX rendering structure remains unchanged.
   return (
     <ShadowIn className="w-full" shadowColor="white">
-      {/* ... your JSX remains unchanged ... */}
       <div className={`card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto relative overflow-hidden ${className ?? ''}`}>
-        {/* Accent color tape in the top right corner */}
         <div
           style={{
             position: 'absolute',
@@ -139,8 +174,8 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
             right: 0,
             width: 200,
             height: 80,
-            background: accentColor, // use prop
-            borderTopRightRadius: 24, // match card radius
+            background: accentColor,
+            borderTopRightRadius: 24,
             transform: 'translate(30%,-110%) rotate(45deg)',
             zIndex: 10,
             boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
@@ -232,7 +267,6 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
               </li>
             ))}
           </ul>
-          {/* Make the label and number side by side */}
           <div className="mt-2 flex flex-row items-end justify-end text-foreground text-base font-tag text-right relative min-h-[60px] gap-3 -mb-[0.9em]">
             <span>your remaining todos :</span>
             <span className="custom-font-outline text-7xl pointer-events-none leading-none -mb-[0.39em] -mr-3">
@@ -240,7 +274,6 @@ export function TodoList({ title, cookieKey, className, accentColor = '#000000' 
             </span>
           </div>
         </main>
-        {/* Remove the absolutely positioned number at the bottom right */}
       </div>
     </ShadowIn>
   );

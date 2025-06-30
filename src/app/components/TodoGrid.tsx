@@ -7,19 +7,18 @@ import { TodoList } from "./TodoList"; // Make sure the path is correct
 // Define a type for the todo items for better type safety
 type TodoItem = {
   title: string;
-  cookieKey: string;
+  storageKey: string;
   accentColor: string;
 };
 
 // This new component encapsulates all client-side logic
 export default function TodoGrid({ allTodos }: { allTodos: TodoItem[] }) {
-  const gridRef = useRef(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const masonryInstance = useRef<Masonry | null>(null);
 
   // This useEffect contains the browser-only code (Masonry, window)
   // and is now safely inside a component that will not be pre-rendered on the server.
   useEffect(() => {
-    // We need to check for 'window' existence for Masonry to work
     if (typeof window !== "undefined" && gridRef.current) {
       masonryInstance.current = new Masonry(gridRef.current, {
         itemSelector: ".grid-item",
@@ -38,7 +37,6 @@ export default function TodoGrid({ allTodos }: { allTodos: TodoItem[] }) {
         resizeTimeout = setTimeout(handleLayoutUpdate, 150);
       };
 
-      // These event listeners are now safe
       window.addEventListener("todos-updated", handleLayoutUpdate);
       window.addEventListener("resize", debouncedResize);
 
@@ -55,13 +53,13 @@ export default function TodoGrid({ allTodos }: { allTodos: TodoItem[] }) {
     <div ref={gridRef} className="relative">
       {allTodos.map((todo) => (
         <div
-          key={todo.cookieKey}
+          key={todo.storageKey}
           // This specific sequence of classes creates the 1 -> 2 -> 1 -> 2 column layout
           className="grid-item w-full sm:w-[calc((100%-32px)/2)] lg:w-full xl:w-[calc((100%-32px)/2)] mb-8"
         >
           <TodoList
             title={todo.title}
-            cookieKey={todo.cookieKey}
+            storageKey={todo.storageKey}
             accentColor={todo.accentColor}
           />
         </div>

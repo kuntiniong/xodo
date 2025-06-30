@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import ShadowIn from "./animations/ShadowIn";
-import DecryptedText from "./animations/DecryptedText";
+import ShadowIn from "@/components/animations/ShadowIn";
+import DecryptedText from "@/components/animations/DecryptedText";
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes
 const SHORT_BREAK = 5 * 60; // 5 minutes

@@ -1,17 +1,29 @@
 import React, { useEffect, useState } from "react";
-import ShadowIn from "./animations/ShadowIn";
+import ShadowIn from "@/components/animations/ShadowIn";
 
-// Helper to get all cookies as an object
-function getAllCookies(): Record<string, string> {
-  if (typeof document === "undefined") return {};
-  return document.cookie.split("; ").reduce((acc, cookie) => {
-    const [key, ...v] = cookie.split("=");
-    acc[key] = decodeURIComponent(v.join("="));
-    return acc;
-  }, {} as Record<string, string>);
+interface Todo {
+  text: string;
+  completed: boolean;
 }
 
-// List of todo keys to check
+/**
+ * Get the list of todos using localStorage instead of cookies.
+ * @param key The key used to store the todos.
+ * @returns An array of Todo items.
+ */
+function getTodosFromLocalStorage(key: string): Todo[] {
+  if (typeof window === "undefined" || !window.localStorage) return [];
+  const saved = localStorage.getItem(key);
+  if (!saved) return [];
+  try {
+    return JSON.parse(saved);
+  } catch (error) {
+    console.error("Failed to parse todos from localStorage:", error);
+    return [];
+  }
+}
+
+// List of todo keys to check along with their labels.
 const TODO_KEYS = [
   { key: "todos1", label: "main" },
   { key: "todos2", label: "admin" },
@@ -22,54 +34,52 @@ const TODO_KEYS = [
 ];
 
 const BAR_COLORS = [
-  'var(--color-green-dark)',   // main
-  'var(--color-red-dark)',    // admin
-  'var(--color-yellow-dark)', // study
-  'var(--color-blue-dark)',   // work
-  'var(--color-purple-dark)', // project
-  'var(--color-orange-dark)', // hobby
+  "var(--color-green-dark)", // main
+  "var(--color-red-dark)", // admin
+  "var(--color-yellow-dark)", // study
+  "var(--color-blue-dark)", // work
+  "var(--color-purple-dark)", // project
+  "var(--color-orange-dark)", // hobby
 ];
 
 export default function TodoBarChart() {
   const [counts, setCounts] = useState<number[]>([0, 0, 0, 0, 0, 0]);
-  const titles = ["main", "admin", "study", "work", "project", "hobby"];
 
   useEffect(() => {
     const updateCounts = () => {
-      const cookies = getAllCookies();
       setCounts(
         TODO_KEYS.map(({ key }) => {
-          try {
-            const raw = cookies[key] || "";
-            if (!raw) return 0;
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-              // Count only unchecked todos
-              return parsed.filter((todo: any) => !todo.completed).length;
-            }
-            if (typeof parsed === "object" && parsed !== null) {
-              // If object, count only unchecked
-              return Object.values(parsed).filter((todo: any) => !todo.completed).length;
-            }
-            return 0;
-          } catch {
-            return 0;
+          const todos = getTodosFromLocalStorage(key);
+          if (Array.isArray(todos)) {
+            // Count only unchecked todos.
+            return todos.filter((todo) => !todo.completed).length;
           }
+          return 0;
         })
       );
     };
+
+    // Update counts at mount.
     updateCounts();
-    // Listen for custom event to update immediately
-    window.addEventListener("todos-updated", updateCounts);
-    // Fallback polling in case event is missed
+
+    // Handler that updates counts on custom "todos-updated" events.
+    const handleTodosUpdate = () => {
+      updateCounts();
+    };
+
+    // Listen for custom events that signal an update.
+    window.addEventListener("todos-updated", handleTodosUpdate);
+
+    // Fallback polling in case the event is missed.
     const interval = setInterval(updateCounts, 200);
+
     return () => {
-      window.removeEventListener("todos-updated", updateCounts);
+      window.removeEventListener("todos-updated", handleTodosUpdate);
       clearInterval(interval);
     };
   }, []);
 
-  // Find the max for scaling 
+  // Find the maximum value (at least 1) for scaling the bars.
   const max = Math.max(...counts, 1);
 
   return (
@@ -87,11 +97,13 @@ export default function TodoBarChart() {
                     style={{
                       width: `${(counts[i] / max) * 100}%`,
                       minWidth: counts[i] > 0 ? 24 : 0,
-                      background: BAR_COLORS[i] || 'var(--color-muted)',
+                      background: BAR_COLORS[i] || "var(--color-muted)",
                     }}
                   ></div>
                 </div>
-                <span className="w-8 text-xs text-right custom-font-nothing">{counts[i]}</span>
+                <span className="w-8 text-xs text-right custom-font-nothing">
+                  {counts[i]}
+                </span>
               </div>
             ))}
           </div>
