@@ -23,7 +23,7 @@ const footerSections: FooterSection[] = [
     links: [
       { label: "WHY should you use Xodo?", href: "#" },
       { label: "HOW do you use Xodo?", href: "#" },
-      { label: "List of commands", href: "#" },
+      { label: "List of commands", href: "https://ktiong.com/blog/xodo-commands" },
     ],
   },
   {

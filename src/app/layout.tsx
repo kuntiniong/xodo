@@ -9,12 +9,11 @@ import {
   jetBrainsMono,
   jetBrainsMonoBold,
 } from "@/app/styles/font";
-import Image from "next/image";
-import Footer from "../components/footer/Footer";
+import ClientLayout from "./ClientLayout";
 
 export const metadata: Metadata = {
-  title: "To do list",
-  description: "Retrofuturistic to do list web app",
+  title: "Xodo - A Keyboard-first To do list",
+  description: "Linux-like syntax Keyboard-first to do list web app",
   icons: {
     icon: "/favicon.png",
   },
@@ -40,23 +39,7 @@ export default function RootLayout({
           overflow-x-hidden
         `}
       >
-        {/* Full background image using Next.js Image */}
-        <div style={{ position: "fixed", inset: 0, zIndex: -1 }}>
-          <Image
-            src="/background.png"
-            alt="background"
-            fill
-            style={{ objectFit: "cover" }}
-            priority
-            sizes="100vw"
-            className="blur-[3px]"
-          />
-        </div>
-        <div className="mx-auto px-1 sm:px-6 lg:px-18 -mt-8 mb-8">
-          {/* Added max-width container */}
-          {children}
-        </div>
-          <Footer />
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   );

@@ -49,6 +49,18 @@ export default function TodoGrid({ allTodos }: { allTodos: TodoItem[] }) {
     }
   }, []);
 
+  // Listen for command events and forward to TodoLists
+  useEffect(() => {
+    const handler = (e: any) => {
+      // Forward command to all TodoLists via custom event
+      window.dispatchEvent(
+        new CustomEvent("todo-command-internal", { detail: e.detail })
+      );
+    };
+    window.addEventListener("todo-command", handler);
+    return () => window.removeEventListener("todo-command", handler);
+  }, []);
+
   return (
     <div ref={gridRef} className="relative">
       {allTodos.map((todo) => (

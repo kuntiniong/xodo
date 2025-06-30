@@ -79,7 +79,7 @@
   }
 
   .custom-font-outline {
-    @apply font-title text-transparent;
+    @apply font-title text-transparent tracking-[-0.15em];
     -webkit-text-stroke: 1px var(--color-foreground);
   }
 }

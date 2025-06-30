@@ -136,6 +136,35 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, mounted]);
 
+  // Listen for todo-command-internal events
+  useEffect(() => {
+    const handler = (e: any) => {
+      const cmd = e.detail;
+      // Only act on commands for this list
+      if (
+        cmd.type === "cd" &&
+        (cmd.args?.listId === title ||
+          cmd.args?.listName === title ||
+          cmd.args?.listInitial?.toLowerCase() === title[0].toLowerCase())
+      ) {
+        // Scroll to this list
+        const el = document.getElementById(title);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if ((cmd.type === "add" || cmd.type === "touch") && (cmd.args?.listName === title || cmd.args?.listInitial?.toLowerCase() === title[0].toLowerCase())) {
+        setTodos([...todos, { text: cmd.args.taskName, completed: false }]);
+      }
+      if (cmd.type === "rm" && (cmd.args?.listName === title || cmd.args?.listInitial?.toLowerCase() === title[0].toLowerCase())) {
+        setTodos((prev) => prev.filter((_, i) => i !== (cmd.args.taskId - 1)));
+      }
+      if (cmd.type === "rm-done" && (cmd.args?.listName === title || cmd.args?.listInitial?.toLowerCase() === title[0].toLowerCase())) {
+        setTodos((prev) => prev.map((todo, i) => i === (cmd.args.taskId - 1) ? { ...todo, completed: true } : todo));
+      }
+    };
+    window.addEventListener("todo-command-internal", handler);
+    return () => window.removeEventListener("todo-command-internal", handler);
+  }, [title, todos]);
+
   // Prevent rendering on the server or before the initial client-side mount.
   if (!mounted) {
     return null;
@@ -166,7 +195,7 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
   // The JSX rendering structure remains unchanged.
   return (
     <ShadowIn className="w-full" shadowColor="white">
-      <div className={`card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto relative overflow-hidden ${className ?? ''}`}>
+      <div id={title} className={`card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto relative overflow-hidden ${className ?? ''}`}>
         <div
           style={{
             position: 'absolute',
@@ -226,20 +255,18 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
                   overflow: 'hidden',
                 }}
               >
-                {!todo.completed && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      zIndex: 1,
-                      pointerEvents: 'none',
-                      backgroundImage: 'url(/grainy.jpg)',
-                      opacity: 0.18,
-                      mixBlendMode: 'overlay',
-                    }}
-                  />
-                )}
-                <label className="flex items-center gap-3 w-full cursor-pointer" style={{ zIndex: 2 }}>
+                {/* Large index as a background element */}
+                <span
+                  className="custom-font-outline pointer-events-none select-none opacity-15 absolute left-4 top-1/2 -translate-y-1/2 text-[5rem] font-black z-0"
+                  style={{
+                    lineHeight: 1,
+                    userSelect: 'none',
+                  }}
+                  aria-hidden="true"
+                >
+                  {idx + 1}
+                </span>
+                <label className="flex items-center gap-3 w-full cursor-pointer relative z-10">
                   <input
                     type="checkbox"
                     checked={todo.completed}
@@ -259,7 +286,7 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
                 </label>
                 <button
                   onClick={() => removeTodo(idx)}
-                  className="ml-4 text-2xl font-bold px-2 btn"
+                  className="ml-4 text-2xl font-bold px-2 btn relative z-10"
                   aria-label={`Remove ${todo.text}`}
                 >
                   ×
