@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import NavBar from "../components/NavBar";
-import Footer from "../components/footer/Footer";
+import NavBar from "@/components/navbar/NavBar";
+import Footer from "@/components/footer/Footer";
 import Image from "next/image";
+import { AuthProvider } from "@/components/navbar/AuthProvider";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   // Command handler to broadcast commands to listeners
@@ -13,7 +14,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     }
   };
   return (
-    <>
+    <AuthProvider>
       {/* Navigation bar at the top */}
       <NavBar onSearch={sendCommand} />
       {/* Full background image using Next.js Image */}
@@ -33,6 +34,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         {children}
       </div>
       <Footer />
-    </>
+    </AuthProvider>
   );
 }

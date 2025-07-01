@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import ShadowIn from "@/components/animations/ShadowIn";
 import DecryptedText from "@/components/animations/DecryptedText";
-import { useTimerStore, useTimerDisplayStore, useTimerControlStore } from "../../stores/timerStore";
+import { useTimerStore, useTimerDisplayStore, useTimerControlStore } from "@/stores/timerStore";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60)

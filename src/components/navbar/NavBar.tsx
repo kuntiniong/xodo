@@ -2,8 +2,9 @@
 
 import React from "react";
 import Image from "next/image";
-import SearchBar, { Command } from "../app/components/SearchBar";
-import { useSidebarStore } from "../app/stores/sidebarStore";
+import SearchBar, { Command } from "./SearchBar";
+import { useSidebarStore } from "@/stores/sidebarStore.ts";
+import UserDropdown from "./UserDropdown";
 
 interface NavBarProps {
   onSearch: (command: Command) => void;
@@ -42,12 +43,9 @@ const NavBar: React.FC<NavBarProps> = ({ onSearch }) => {
             <SearchBar onSearch={onSearch} />
           </div>
 
-          {/* Right side - Name, Profile pic and Sidebar button */}
+          {/* Right side - User dropdown and Sidebar button */}
           <div className="flex items-center gap-3">
-            <span className="font-main text-sm text-foreground/80 hidden sm:block">John Doe</span>
-            <div className="w-8 h-8 bg-background-muted rounded-full border-2 border-foreground/20 flex items-center justify-center">
-              <div className="w-6 h-6 bg-gradient-to-br from-link-from to-link-to rounded-full"></div>
-            </div>
+            <UserDropdown />
             
             {/* Sidebar toggle button - visible on mobile and tablet */}
             <button

@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import PomodoroTimer from "./PomodoroTimer";
 import TodoBarChart from "./TodoBarChart";
 import LocalStorageViewer from "./LocalStorageViewer";
-import { useTimerControlStore } from "../../stores/timerStore";
-import { useSidebarStore } from "../../stores/sidebarStore";
+import { useTimerControlStore } from "@/stores/timerStore";
+import { useSidebarStore } from "@/stores/sidebarStore";
 
 export default function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useSidebarStore();

@@ -32,7 +32,28 @@ function getTodosFromLocalStorage(key: string): Todo[] {
 
   try {
     // Parse the stored JSON string back into an array.
-    return JSON.parse(savedTodos);
+    const parsed = JSON.parse(savedTodos);
+    
+    // Validate that the parsed data is an array
+    if (!Array.isArray(parsed)) {
+      console.warn(`Invalid todos data format for key ${key}:`, parsed);
+      return [];
+    }
+    
+    // Validate that each item has the expected Todo structure
+    const validTodos = parsed.filter((item: any) => {
+      return item && 
+             typeof item === 'object' && 
+             typeof item.text === 'string' && 
+             typeof item.completed === 'boolean';
+    });
+    
+    // If some items were filtered out, log a warning
+    if (validTodos.length !== parsed.length) {
+      console.warn(`Filtered out ${parsed.length - validTodos.length} invalid todo items from ${key}`);
+    }
+    
+    return validTodos;
   } catch (error) {
     console.error("Failed to parse todos from localStorage:", error);
     return [];
@@ -47,6 +68,12 @@ function getTodosFromLocalStorage(key: string): Todo[] {
 function setTodosToLocalStorage(key: string, todos: Todo[]) {
   // Check for SSR environments.
   if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  
+  // Validate that todos is an array before saving
+  if (!Array.isArray(todos)) {
+    console.error("Cannot save todos: expected array but got:", typeof todos);
     return;
   }
   
@@ -95,8 +122,17 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
   // This effect loads the initial todos from localStorage once the component is mounted.
   useEffect(() => {
     if (mounted) {
-      // MODIFICATION: Call the new localStorage function.
-      setTodos(getTodosFromLocalStorage(storageKey));
+      // MODIFICATION: Call the new localStorage function with additional safety check.
+      const loadedTodos = getTodosFromLocalStorage(storageKey);
+      
+      // Ensure we always have an array, even if something went wrong
+      if (Array.isArray(loadedTodos)) {
+        setTodos(loadedTodos);
+      } else {
+        console.warn(`Loaded todos is not an array for ${storageKey}, resetting to empty array`);
+        setTodos([]);
+      }
+      
       setHasLoaded(true);
     }
   }, [storageKey, mounted]);
@@ -116,7 +152,7 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
 
   // This effect manages the random gradients for each todo item.
   useEffect(() => {
-    if (mounted) {
+    if (mounted && Array.isArray(todos)) {
       setGradientsForTodos((prev) => {
         if (prev.length === todos.length && todos.every((t, i) => prev[i] && t.text === todos[i].text)) {
           return prev;
@@ -136,6 +172,38 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, mounted]);
 
+  // Listen for Firestore sync updates
+  useEffect(() => {
+    const handleFirestoreUpdate = (event: any) => {
+      const { storageKey: updatedStorageKey, todos: updatedTodos } = event.detail;
+      // Only update if this is for our specific storage key
+      if (updatedStorageKey === storageKey) {
+        console.log(`🔄 Firestore sync update received for ${title}, updating todos`);
+        setTodos(Array.isArray(updatedTodos) ? updatedTodos : []);
+      }
+    };
+
+    window.addEventListener('firestore-sync-update', handleFirestoreUpdate);
+    return () => {
+      window.removeEventListener('firestore-sync-update', handleFirestoreUpdate);
+    };
+  }, [storageKey, title]);
+
+  // Listen for logout reset event to clear todos
+  useEffect(() => {
+    const handleLogoutReset = () => {
+      console.log(`🔄 Logout reset detected for ${title}, reloading from localStorage`);
+      // Reload todos from localStorage (which should now be empty after logout)
+      const loadedTodos = getTodosFromLocalStorage(storageKey);
+      setTodos(Array.isArray(loadedTodos) ? loadedTodos : []);
+    };
+
+    window.addEventListener('user-logout-reset', handleLogoutReset);
+    return () => {
+      window.removeEventListener('user-logout-reset', handleLogoutReset);
+    };
+  }, [storageKey, title]);
+
   // Listen for todo-command-internal events
   useEffect(() => {
     const handler = (e: any) => {
@@ -152,13 +220,25 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
         if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
       if ((cmd.type === "add" || cmd.type === "touch") && (cmd.args?.listName === title || cmd.args?.listInitial?.toLowerCase() === title[0].toLowerCase())) {
-        setTodos([...todos, { text: cmd.args.taskName, completed: false }]);
+        setTodos(prevTodos => {
+          // Ensure prevTodos is always an array
+          const safeTodos = Array.isArray(prevTodos) ? prevTodos : [];
+          return [...safeTodos, { text: cmd.args.taskName, completed: false }];
+        });
       }
       if (cmd.type === "rm" && (cmd.args?.listName === title || cmd.args?.listInitial?.toLowerCase() === title[0].toLowerCase())) {
-        setTodos((prev) => prev.filter((_, i) => i !== (cmd.args.taskId - 1)));
+        setTodos((prev) => {
+          // Ensure prev is always an array
+          const safePrev = Array.isArray(prev) ? prev : [];
+          return safePrev.filter((_, i) => i !== (cmd.args.taskId - 1));
+        });
       }
       if (cmd.type === "rm-done" && (cmd.args?.listName === title || cmd.args?.listInitial?.toLowerCase() === title[0].toLowerCase())) {
-        setTodos((prev) => prev.map((todo, i) => i === (cmd.args.taskId - 1) ? { ...todo, completed: true } : todo));
+        setTodos((prev) => {
+          // Ensure prev is always an array
+          const safePrev = Array.isArray(prev) ? prev : [];
+          return safePrev.map((todo, i) => i === (cmd.args.taskId - 1) ? { ...todo, completed: true } : todo);
+        });
       }
     };
     window.addEventListener("todo-command-internal", handler);
@@ -174,23 +254,32 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
   const addTodo = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!input.trim()) return;
-    setTodos([...todos, { text: input.trim(), completed: false }]);
+    
+    // Ensure todos is always an array before spreading
+    const safeTodos = Array.isArray(todos) ? todos : [];
+    setTodos([...safeTodos, { text: input.trim(), completed: false }]);
     setInput("");
   };
 
   const removeTodo = (idx: number) => {
-    setTodos(todos.filter((_, i) => i !== idx));
+    // Ensure todos is always an array before filtering
+    const safeTodos = Array.isArray(todos) ? todos : [];
+    setTodos(safeTodos.filter((_, i) => i !== idx));
   };
 
   const toggleTodo = (idx: number) => {
+    // Ensure todos is always an array before mapping
+    const safeTodos = Array.isArray(todos) ? todos : [];
     setTodos(
-      todos.map((todo, i) =>
+      safeTodos.map((todo, i) =>
         i === idx ? { ...todo, completed: !todo.completed } : todo
       )
     );
   };
 
-  const remaining = todos.filter((t) => !t.completed).length;
+  // Ensure todos is always an array before filtering for remaining count
+  const safeTodosForCount = Array.isArray(todos) ? todos : [];
+  const remaining = safeTodosForCount.filter((t) => !t.completed).length;
 
   // The JSX rendering structure remains unchanged.
   return (
@@ -237,12 +326,12 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
             </button>
           </form>
           <ul className="w-full flex flex-col gap-4">
-            {todos.length === 0 && (
+            {Array.isArray(todos) && todos.length === 0 && (
               <li className="text-background-muted text-center custom-font-nothing text-lg">
                 no todos yet.
               </li>
             )}
-            {todos.map((todo, idx) => (
+            {Array.isArray(todos) && todos.map((todo, idx) => (
               <li
                 key={idx}
                 className={`card flex rounded-2xl items-center justify-between px-6 py-3 shadow-sm ${todo.completed ? 'bg-background' : ''}`}
