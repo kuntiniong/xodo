@@ -115,7 +115,7 @@ export default function LocalStorageViewer() {
             </div>
             <div className="flex justify-end">
               <button
-                className="btn px-3 py-1 rounded-lg font-bold mb-2"
+                className="card btn px-3 py-1 rounded-lg font-bold mb-2"
                 onClick={() => {
                   if (
                     window.confirm(

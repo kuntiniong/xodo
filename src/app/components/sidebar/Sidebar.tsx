@@ -2,9 +2,28 @@ import { useState, useEffect } from "react";
 import PomodoroTimer from "./PomodoroTimer";
 import TodoBarChart from "./TodoBarChart";
 import LocalStorageViewer from "./LocalStorageViewer";
+import { useTimerControlStore } from "../../stores/timerStore";
 
 export default function Sidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showVisualization, setShowVisualization] = useState(true); // true = TodoBarChart, false = PomodoroTimer
+  const { isRunning } = useTimerControlStore();
+
+  // Load toggle state from localStorage on component mount
+  useEffect(() => {
+    const savedToggleState = localStorage.getItem("sidebar-toggle-state");
+    if (savedToggleState !== null) {
+      setShowVisualization(JSON.parse(savedToggleState));
+    }
+  }, []);
+
+  // Save toggle state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(
+      "sidebar-toggle-state",
+      JSON.stringify(showVisualization)
+    );
+  }, [showVisualization]);
 
   useEffect(() => {
     if (sidebarOpen) {
@@ -16,6 +35,40 @@ export default function Sidebar() {
       document.body.style.overflow = "";
     };
   }, [sidebarOpen]);
+
+  // Toggle component that switches between TodoBarChart and PomodoroTimer
+  const ToggleableComponent = () => (
+    <div className="relative">
+      {/* Toggle buttons */}
+      <div className="flex mb-4 p-1 card rounded-full">
+        <button
+          onClick={() => setShowVisualization(true)}
+          className={`flex-1 px-3 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
+            showVisualization
+              ? "bg-foreground text-background"
+              : "text-foreground-muted hover:text-link-hover"
+          }`}
+        >
+          chart
+        </button>
+        <button
+          onClick={() => setShowVisualization(false)}
+          className={`flex-1 px-3 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
+            !showVisualization
+              ? "bg-foreground text-background"
+              : "text-foreground-muted hover:text-link-hover"
+          }`}
+        >
+          timer {isRunning && <span className="ml-1 inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>}
+        </button>
+      </div>
+
+      {/* Component content */}
+      <div className="transition-all duration-300">
+        {showVisualization ? <TodoBarChart /> : <PomodoroTimer />}
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -40,8 +93,20 @@ export default function Sidebar() {
             </linearGradient>
           </defs>
           <rect y="4" width="24" height="2" rx="1" fill="url(#menu-gradient)" />
-          <rect y="11" width="24" height="2" rx="1" fill="url(#menu-gradient)" />
-          <rect y="18" width="24" height="2" rx="1" fill="url(#menu-gradient)" />
+          <rect
+            y="11"
+            width="24"
+            height="2"
+            rx="1"
+            fill="url(#menu-gradient)"
+          />
+          <rect
+            y="18"
+            width="24"
+            height="2"
+            rx="1"
+            fill="url(#menu-gradient)"
+          />
         </svg>
       </button>
 
@@ -98,8 +163,7 @@ export default function Sidebar() {
       {/* Desktop Sidebar: Stable and positioned by the parent grid */}
       <div className="hidden lg:block w-80">
         <div className="sticky top-8 flex flex-col gap-8">
-          <PomodoroTimer />
-          <TodoBarChart />
+          <ToggleableComponent />
           <LocalStorageViewer />
         </div>
       </div>

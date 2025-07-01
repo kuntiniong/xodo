@@ -1,11 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Sidebar from "./components/Sidebar";
+import Sidebar from "./components/sidebar/Sidebar";
 
 // Dynamically import the new TodoGrid component with SSR disabled.
 // This prevents it from running during the server-side build.
-const ClientOnlyTodoGrid = dynamic(() => import("./components/TodoGrid"), {
+const ClientOnlyTodoGrid = dynamic(() => import("./components/todo/TodoGrid"), {
   ssr: false,
   // Optional: Show a loading skeleton or message while the component loads on the client
   loading: () => (
