@@ -94,7 +94,7 @@ export default function LocalStorageViewer() {
     <ShadowIn className="w-full" shadowColor="white">
       <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
-          <h2 className="text-5xl title text-left my-2">save</h2>
+          <h2 className="text-5xl title text-left my-2">in/export</h2>
 
           <div className="mb-4 grid grid-cols-3 gap-2 w-full">
             <div className="col-span-2 flex gap-2">

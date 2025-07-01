@@ -3,9 +3,10 @@ import PomodoroTimer from "./PomodoroTimer";
 import TodoBarChart from "./TodoBarChart";
 import LocalStorageViewer from "./LocalStorageViewer";
 import { useTimerControlStore } from "../../stores/timerStore";
+import { useSidebarStore } from "../../stores/sidebarStore";
 
 export default function Sidebar() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { sidebarOpen, setSidebarOpen } = useSidebarStore();
   const [showVisualization, setShowVisualization] = useState(true); // true = TodoBarChart, false = PomodoroTimer
   const { isRunning } = useTimerControlStore();
 
@@ -72,44 +73,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu - hidden on large screens where the grid is active */}
-      <button
-        className="card rounded-lg lg:hidden fixed top-4 right-4 z-50 p-2"
-        onClick={() => setSidebarOpen(true)}
-        aria-label="Open sidebar"
-      >
-        <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
-          <defs>
-            <linearGradient
-              id="menu-gradient"
-              x1="0"
-              y1="0"
-              x2="24"
-              y2="0"
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop stopColor="var(--color-link-from)" />
-              <stop offset="1" stopColor="var(--color-link-to)" />
-            </linearGradient>
-          </defs>
-          <rect y="4" width="24" height="2" rx="1" fill="url(#menu-gradient)" />
-          <rect
-            y="11"
-            width="24"
-            height="2"
-            rx="1"
-            fill="url(#menu-gradient)"
-          />
-          <rect
-            y="18"
-            width="24"
-            height="2"
-            rx="1"
-            fill="url(#menu-gradient)"
-          />
-        </svg>
-      </button>
-
       {/* Mobile overlay and drawer */}
       {sidebarOpen && (
         <div
@@ -123,7 +86,7 @@ export default function Sidebar() {
         }`}
       >
         <button
-          className="card absolute top-4 right-4 p-2 rounded-lg"
+          className="absolute top-4 right-4 p-2 rounded-lg"
           onClick={() => setSidebarOpen(false)}
           aria-label="Close sidebar"
         >
@@ -162,7 +125,7 @@ export default function Sidebar() {
 
       {/* Desktop Sidebar: Stable and positioned by the parent grid */}
       <div className="hidden lg:block w-80">
-        <div className="sticky top-8 flex flex-col gap-8">
+        <div className="sticky top-22 flex flex-col gap-8">
           <ToggleableComponent />
           <LocalStorageViewer />
         </div>

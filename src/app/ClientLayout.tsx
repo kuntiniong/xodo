@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import SearchBar from "./components/SearchBar";
+import NavBar from "../components/NavBar";
 import Footer from "../components/footer/Footer";
 import Image from "next/image";
 
@@ -14,12 +14,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   };
   return (
     <>
-      {/* Search bar at the top */}
-      <div className="sticky top-0 z-30 w-full bg-gradient-to-b from-black via-black/50 to-transparent">
-        <div className="max-w-3xl px-5 sm:px-10 lg:px-18 mx-auto w-full z-10 relative">
-          <SearchBar onSearch={sendCommand} />
-        </div>
-      </div>
+      {/* Navigation bar at the top */}
+      <NavBar onSearch={sendCommand} />
       {/* Full background image using Next.js Image */}
       <div style={{ position: "fixed", inset: 0, zIndex: -1 }}>
         <Image
