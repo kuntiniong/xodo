@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import ShadowIn from "@/components/animations/ShadowIn";
+import {
+  useImportData,
+  useResetAllData,
+  useLoadAndSync,
+} from "@/hooks/useFirestoreSync";
+import { useAuthStore } from "@/stores/authStore";
 
 // Helper to get all localStorage items as an object
 const getAllLocalStorage = (): Record<string, string> => {
@@ -48,21 +54,35 @@ export default function LocalStorageViewer() {
   const [importString, setImportString] = useState("");
   const [importError, setImportError] = useState("");
   const [copied, setCopied] = useState(false);
+  const { importData } = useImportData();
+  const { resetAllData } = useResetAllData();
+  const { loadAndSync } = useLoadAndSync();
+  const { user } = useAuthStore();
 
-  const handleImport = () => {
+  const handleImport = async () => {
     setImportError("");
     try {
       const data = JSON.parse(importString);
       if (!data || typeof data !== "object") throw new Error("Invalid format");
-      Object.entries(data).forEach(([key, value]) => {
-        if (/^todos\d+$/.test(key) && typeof value === "string") {
-          localStorage.setItem(key, value);
-        }
-      });
+
+      if (user) {
+        // For logged-in users, sync with Firestore
+        await importData(data);
+        await loadAndSync();
+      } else {
+        // For non-logged-in users, save directly to localStorage
+        Object.keys(data).forEach((key) => {
+          if (typeof data[key] === "string") {
+            localStorage.setItem(key, data[key]);
+          }
+        });
+        // Dispatch a custom event to notify other components of the change
+        window.dispatchEvent(new CustomEvent("local-storage-imported"));
+      }
+
+      setItems(getAllLocalStorage());
       setImportString("");
       setShowImport(false);
-      // Reload to update all components with the new localStorage values.
-      window.location.reload();
     } catch (e) {
       setImportError("Invalid JSON or format.");
     }
@@ -73,28 +93,32 @@ export default function LocalStorageViewer() {
     setItems(getAllLocalStorage());
   };
 
-  const cleanUpItems = () => {
-    // Remove all todos localStorage items (e.g. todos1, todos2, etc.)
-    let changed = false;
-    for (let i = 1; i <= 20; i++) {
-      if (localStorage.getItem(`todos${i}`) !== null) {
-        localStorage.removeItem(`todos${i}`);
-        changed = true;
+  const cleanUpItems = async () => {
+    try {
+      if (user) {
+        await resetAllData();
+      } else {
+        // For non-logged-in users, just clear local storage
+        const allKeys = Object.keys(localStorage);
+        allKeys.forEach((key) => {
+          if (key.startsWith("todos")) {
+            localStorage.removeItem(key);
+          }
+        });
       }
+      // Reload to reflect the changes everywhere.
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to reset data:", error);
+      // Optionally, show an error message to the user
     }
-    // Optionally, remove a base 'todos' key or other related keys.
-    if (localStorage.getItem("todos") !== null) {
-      localStorage.removeItem("todos");
-      changed = true;
-    }
-    if (changed) window.location.reload();
   };
 
   return (
     <ShadowIn className="w-full" shadowColor="white">
       <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
-          <h2 className="text-5xl title text-left my-2">in/export</h2>
+          <h2 className="text-5xl title text-left my-2">im/export</h2>
 
           <div className="mb-4 grid grid-cols-3 gap-2 w-full">
             <div className="col-span-2 flex gap-2">

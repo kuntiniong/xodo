@@ -166,3 +166,77 @@ export const useFirestoreListener = () => {
     };
   }, [user]);
 };
+
+// Hook to import data to Firestore and update local state
+export const useImportData = () => {
+  const { user } = useAuthStore();
+
+  const importData = async (data: Record<string, string>) => {
+    if (!user) {
+      console.error("User not logged in. Cannot import data.");
+      return;
+    }
+    try {
+      await firestoreService.importData(user, data);
+      // The listener will handle the sync. A reload in the component ensures UI consistency.
+      console.log("Data imported. The listener will sync the local state.");
+    } catch (error) {
+      console.error("Error during data import and sync:", error);
+      throw error; // Re-throw to allow for local error handling
+    }
+  };
+
+  return { importData };
+};
+
+// Hook to manually trigger a data load and sync
+export const useLoadAndSync = () => {
+  const { user } = useAuthStore();
+
+  const loadAndSync = async () => {
+    if (!user) {
+      console.error("User not logged in. Cannot sync data.");
+      return;
+    }
+    try {
+      await firestoreService.loadAndSyncData(user);
+    } catch (error) {
+      console.error("Error during manual load and sync:", error);
+      throw error;
+    }
+  };
+
+  return { loadAndSync };
+};
+
+// Hook to reset all data in Firestore and local storage
+export const useResetAllData = () => {
+  const { user } = useAuthStore();
+
+  const resetAllData = async () => {
+    if (!user) {
+      console.error("User not logged in. Cannot reset data.");
+      return;
+    }
+    try {
+      await firestoreService.resetAllData(user);
+
+      // Clear all todo-related localStorage
+      const allKeys = Object.keys(localStorage);
+      allKeys.forEach((key) => {
+        if (key.startsWith("todos")) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      // Dispatch event to notify components that data has been reset
+      window.dispatchEvent(new CustomEvent("user-logout-reset"));
+      console.log("All data reset successfully.");
+    } catch (error) {
+      console.error("Error resetting data:", error);
+      throw error; // Re-throw for component-level error handling
+    }
+  };
+
+  return { resetAllData };
+};

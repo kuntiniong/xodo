@@ -12,6 +12,39 @@ import {
 import { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 
+const defaultTodoLists = [
+  {
+    title: "main",
+    storageKey: "todos1",
+    accentColor: "var(--color-green-dark)",
+  },
+  {
+    title: "admin",
+    storageKey: "todos2",
+    accentColor: "var(--color-red-dark)",
+  },
+  {
+    title: "study",
+    storageKey: "todos3",
+    accentColor: "var(--color-yellow-dark)",
+  },
+  {
+    title: "work",
+    storageKey: "todos4",
+    accentColor: "var(--color-blue-dark)",
+  },
+  {
+    title: "project",
+    storageKey: "todos5",
+    accentColor: "var(--color-purple-dark)",
+  },
+  {
+    title: "hobby",
+    storageKey: "todos6",
+    accentColor: "var(--color-orange-dark)",
+  },
+];
+
 export interface TodoItem {
   id: string;
   text: string;
@@ -109,11 +142,6 @@ class FirestoreService {
           localStorage.setItem(storageKey, JSON.stringify(data.todos));
         }
       });
-
-      // Dispatch a custom event to notify components that data has been loaded
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("firestore-data-loaded"));
-      }
 
       console.log("All todo lists loaded from Firestore");
     } catch (error) {
@@ -244,11 +272,12 @@ class FirestoreService {
       const listDocRef = doc(db, "users", user.uid, "todoLists", storageKey);
       const docSnap = await getDoc(listDocRef);
       
-      let listTitle = storageKey; // fallback to storageKey if no title found
+      const listMapping = defaultTodoLists.find(list => list.storageKey === storageKey);
+      let listTitle = listMapping ? listMapping.title : storageKey; // fallback to storageKey if no title found
       
       if (docSnap.exists()) {
         const data = docSnap.data();
-        listTitle = data.title || storageKey;
+        listTitle = data.title || listTitle;
       }
 
       const localData = localStorage.getItem(storageKey);
@@ -279,6 +308,74 @@ class FirestoreService {
       );
     } catch (error) {
       console.error(`Error creating todo list '${title}':`, error);
+      throw error;
+    }
+  }
+
+  // Force a reload and sync of all data from Firestore
+  async loadAndSyncData(user: User): Promise<void> {
+    if (!user) return;
+    try {
+      await this.loadAllTodoListsFromFirestore(user);
+      console.log("Data reloaded and synced from Firestore.");
+    } catch (error) {
+      console.error("Error during manual data sync:", error);
+      throw error;
+    }
+  }
+
+  // Import data into Firestore
+  async importData(
+    user: User,
+    data: Record<string, string>
+  ): Promise<void> {
+    if (!user) return;
+
+    try {
+      for (const [storageKey, todosString] of Object.entries(data)) {
+        if (storageKey.startsWith("todos")) {
+          try {
+            const todos = JSON.parse(todosString);
+            // Use storageKey as the title, or derive a more descriptive title if needed
+            const listMapping = defaultTodoLists.find(list => list.storageKey === storageKey);
+            const listTitle = listMapping ? listMapping.title : `Imported List: ${storageKey}`;
+            await this.saveTodoListToFirestore(
+              user,
+              listTitle,
+              storageKey,
+              todos
+            );
+          } catch (e) {
+            console.error(
+              `Skipping invalid item ${storageKey}: not valid JSON.`
+            );
+          }
+        }
+      }
+      console.log("Data imported to Firestore successfully");
+    } catch (error) {
+      console.error("Error importing data to Firestore:", error);
+      throw error;
+    }
+  }
+
+  // Reset all data for a user
+  async resetAllData(user: User): Promise<void> {
+    if (!user) return;
+
+    try {
+      const todoListsRef = collection(db, "users", user.uid, "todoLists");
+      const querySnapshot = await getDocs(todoListsRef);
+
+      const deletePromises: Promise<void>[] = [];
+      querySnapshot.forEach((docSnap) => {
+        deletePromises.push(deleteDoc(docSnap.ref));
+      });
+
+      await Promise.all(deletePromises);
+      console.log("All user data has been reset in Firestore.");
+    } catch (error) {
+      console.error("Error resetting user data in Firestore:", error);
       throw error;
     }
   }
