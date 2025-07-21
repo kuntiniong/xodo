@@ -141,7 +141,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
         type="text"
         value={query}
         onChange={handleInputChange}
-        placeholder="Press Ctrl+K or Command+K to search..."
+        placeholder="Press Ctrl+K or Cmd+K or check out the commands at the footer..."
         className="bg-background/80 font-mono flex-1 px-4 py-2 rounded-full focus:outline-none focus:ring-2 focus:ring-link-hover/40 transition-all duration-250"
         aria-label="Search tasks or lists"
       />
