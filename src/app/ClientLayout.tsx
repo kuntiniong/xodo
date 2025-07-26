@@ -5,6 +5,38 @@ import NavBar from "@/components/navbar/NavBar";
 import Footer from "@/components/footer/Footer";
 import Image from "next/image";
 import { AuthProvider } from "@/components/navbar/AuthProvider";
+import { useAuthStore } from "@/stores/authStore";
+import { PassphraseDialog } from "@/components/auth/PassphraseDialog";
+
+function PassphraseProvider({ children }: { children: React.ReactNode }) {
+  const { 
+    isPassphraseRequired, 
+    setPassphraseRequired, 
+    generateAndStoreKeys,
+    loadUserDataFromFirestore,
+    passphraseMode 
+  } = useAuthStore();
+
+  const handleSubmit = async (passphrase: string) => {
+    if (passphraseMode === 'create') {
+      await generateAndStoreKeys(passphrase);
+    } else {
+      await loadUserDataFromFirestore(passphrase);
+    }
+  };
+
+  return (
+    <>
+      <PassphraseDialog
+        open={isPassphraseRequired}
+        onOpenChange={setPassphraseRequired}
+        onSubmit={handleSubmit}
+        mode={passphraseMode}
+      />
+      {children}
+    </>
+  );
+}
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   // Command handler to broadcast commands to listeners
@@ -32,25 +64,27 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <AuthProvider>
-      {/* Navigation bar at the top */}
-      <NavBar onSearch={sendCommand} />
-      {/* Full background image using Next.js Image */}
-      <div style={{ position: "fixed", inset: 0, zIndex: -1 }}>
-        <Image
-          src="/background.png"
-          alt="background"
-          fill
-          style={{ objectFit: "cover" }}
-          priority
-          sizes="100vw"
-          className="blur-[3px]"
-        />
-      </div>
-      <div className="mx-auto px-1 sm:px-6 lg:px-18 -mt-13 mb-8">
-        {/* Added max-width container */}
-        {children}
-      </div>
-      <Footer />
+      <PassphraseProvider>
+        {/* Navigation bar at the top */}
+        <NavBar onSearch={sendCommand} />
+        {/* Full background image using Next.js Image */}
+        <div style={{ position: "fixed", inset: 0, zIndex: -1 }}>
+          <Image
+            src="/background.png"
+            alt="background"
+            fill
+            style={{ objectFit: "cover" }}
+            priority
+            sizes="100vw"
+            className="blur-[3px]"
+          />
+        </div>
+        <div className="mx-auto px-1 sm:px-6 lg:px-18 -mt-13 mb-8">
+          {/* Added max-width container */}
+          {children}
+        </div>
+        <Footer />
+      </PassphraseProvider>
     </AuthProvider>
   );
 }

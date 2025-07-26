@@ -47,7 +47,7 @@ export default function TodoGrid({ allTodos }: { allTodos: TodoItem[] }) {
         window.removeEventListener("resize", debouncedResize);
       };
     }
-  }, []);
+  }, [allTodos]);
 
   // Listen for command events and forward to TodoLists
   useEffect(() => {

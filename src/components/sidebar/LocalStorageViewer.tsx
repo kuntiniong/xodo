@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import ShadowIn from "@/components/animations/ShadowIn";
-import {
-  useImportData,
-  useResetAllData,
-  useLoadAndSync,
-} from "@/hooks/useFirestoreSync";
+import { useResetAllData } from "@/hooks/useFirestoreSync";
 import { useAuthStore } from "@/stores/authStore";
+import { firestoreService } from "@/services/firestoreService";
 
 // Helper to get all localStorage items as an object
 const getAllLocalStorage = (): Record<string, string> => {
@@ -54,10 +51,8 @@ export default function LocalStorageViewer() {
   const [importString, setImportString] = useState("");
   const [importError, setImportError] = useState("");
   const [copied, setCopied] = useState(false);
-  const { importData } = useImportData();
   const { resetAllData } = useResetAllData();
-  const { loadAndSync } = useLoadAndSync();
-  const { user } = useAuthStore();
+  const { user, syncLocalDataToFirestore, loadUserDataFromFirestore } = useAuthStore();
 
   const handleImport = async () => {
     setImportError("");
@@ -66,9 +61,21 @@ export default function LocalStorageViewer() {
       if (!data || typeof data !== "object") throw new Error("Invalid format");
 
       if (user) {
-        // For logged-in users, sync with Firestore
-        await importData(data);
-        await loadAndSync();
+        // For logged-in users, first update localStorage, then sync to Firestore
+        Object.keys(data).forEach((key) => {
+          if (typeof data[key] === "string") {
+            localStorage.setItem(key, data[key]);
+          }
+        });
+        
+        // Sync the updated localStorage to Firestore
+        await syncLocalDataToFirestore();
+        
+        // Reload data from Firestore to ensure consistency
+        const { passphrase } = useAuthStore.getState();
+        if (passphrase) {
+          await loadUserDataFromFirestore(passphrase);
+        }
       } else {
         // For non-logged-in users, save directly to localStorage
         Object.keys(data).forEach((key) => {

@@ -31,8 +31,9 @@ export const useFirestoreSync = () => {
   // Get storage keys dynamically from Firestore
   useEffect(() => {
     const loadStorageKeys = async () => {
-      if (!user) {
-        // Default storage keys for anonymous users
+      const { privateKey, passphrase } = useAuthStore.getState();
+      if (!user || !privateKey || !passphrase) {
+        // Default storage keys for anonymous users or when keys are not ready
         setStorageKeysToSync(defaultStorageKeys);
         return;
       }
@@ -72,6 +73,11 @@ export const useFirestoreSync = () => {
     const debouncedSync = (storageKey: string) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
+        const { publicKey } = useAuthStore.getState();
+        if (!publicKey) {
+          console.warn(`Sync for ${storageKey} skipped: Public key not available yet.`);
+          return;
+        }
         try {
           console.log(`🔄 Syncing ${storageKey} to Firestore after 1s debounce`);
           await firestoreService.syncLocalStorageChange(user, storageKey);
@@ -147,14 +153,18 @@ export const useFirestoreListener = () => {
       Object.entries(lists).forEach(([title, { todos, storageKey }]) => {
         if (storageKey) {
           const currentData = localStorage.getItem(storageKey);
-          const newData = JSON.stringify(todos);
+          const todosForStorage = todos.map(todo => ({
+            text: todo.text,
+            completed: todo.completed
+          }));
+          const newData = JSON.stringify(todosForStorage);
           
           // Only update if data has changed to avoid infinite loops
           if (currentData !== newData) {
             localStorage.setItem(storageKey, newData);
             // Dispatch event to notify components of the change
             window.dispatchEvent(new CustomEvent('firestore-sync-update', { 
-              detail: { storageKey, title, todos } 
+              detail: { storageKey, title, todos: todosForStorage } 
             }));
           }
         }
@@ -165,48 +175,6 @@ export const useFirestoreListener = () => {
       unsubscribe();
     };
   }, [user]);
-};
-
-// Hook to import data to Firestore and update local state
-export const useImportData = () => {
-  const { user } = useAuthStore();
-
-  const importData = async (data: Record<string, string>) => {
-    if (!user) {
-      console.error("User not logged in. Cannot import data.");
-      return;
-    }
-    try {
-      await firestoreService.importData(user, data);
-      // The listener will handle the sync. A reload in the component ensures UI consistency.
-      console.log("Data imported. The listener will sync the local state.");
-    } catch (error) {
-      console.error("Error during data import and sync:", error);
-      throw error; // Re-throw to allow for local error handling
-    }
-  };
-
-  return { importData };
-};
-
-// Hook to manually trigger a data load and sync
-export const useLoadAndSync = () => {
-  const { user } = useAuthStore();
-
-  const loadAndSync = async () => {
-    if (!user) {
-      console.error("User not logged in. Cannot sync data.");
-      return;
-    }
-    try {
-      await firestoreService.loadAndSyncData(user);
-    } catch (error) {
-      console.error("Error during manual load and sync:", error);
-      throw error;
-    }
-  };
-
-  return { loadAndSync };
 };
 
 // Hook to reset all data in Firestore and local storage
