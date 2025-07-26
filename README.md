@@ -1,117 +1,127 @@
-# Comprehensive Guide
+# xodo workflow
 
-This document provides a complete overview of the Xodo todo application, from user-facing features to the underlying technical implementation.
+## toc
+- 1. visitors
+- 2. user registration
+- 3. user log in
+- 4. user log out
 
-## 1. User Guide
+## 1. visitors
+- data is stored locally in indexeddb without encryption
+- the export/import and reset function should be able to manipulate the data stored in indexeddb
 
-### 1.1. Getting Started
+**✅ Current Implementation:** This is exactly how it works. Anonymous users have their data stored in IndexedDB in plain text format, and the import/export/reset functions work directly with this IndexedDB data.
 
-- **Anonymous Usage**: When you first visit, you can immediately use the app without an account. All todo list data is stored locally in your browser's `localStorage`.
-- **Sign In**: To back up and sync your data across devices, sign in with a Google account.
+## 2. user registration
+- clear out all the data stored in indexeddb
+- a dialog for asking the user to create a pass phrase
+- pass phrase is not sent to the server, only the hash and the private key encrypted by the pass phrase is sent to the server
 
-### 1.2. Authentication
+**✅ Current Implementation:** This is correctly implemented.
 
-- **Sign-In Process**: Click the profile area in the top-right, select "Sign in with Google," and follow the prompts. Your local data will be automatically synced to the cloud.
-- **Sign-Out Process**: Click your profile, select "Sign out." Your data remains in the cloud, and your device returns to anonymous mode.
+- **why do we need the encrypted private key when we can use the pass phrase to directly encrypt the data?**
+  
+  **Answer:** We use the encrypted private key approach for several important reasons:
+  1. **Deterministic Key Generation:** The private key is generated deterministically from your user ID + passphrase using PBKDF2, ensuring the same key is always generated for the same user/passphrase combination
+  2. **Cross-Device Consistency:** When you log in from different devices, the system needs to decrypt data that was encrypted on other devices. Storing the encrypted private key in Firestore allows any device to retrieve and decrypt it with your passphrase
+  3. **OpenPGP Standard:** We use OpenPGP encryption which is battle-tested and provides strong security guarantees
+  4. **Key Management:** It separates key management from data encryption, following cryptographic best practices
 
-### 1.3. Command-Line Interface
+- **what's the advantage of using pass phrase instead of a more secure password here?**
+  
+  **Answer:** The term "passphrase" is used because:
+  1. **User Experience:** "Passphrase" suggests it can be a sentence or phrase, making it more memorable than a complex password
+  2. **Length over Complexity:** Passphrases encourage longer strings, which are more secure than short complex passwords
+  3. **Memorability:** Users are more likely to remember "my secret todo list for 2025" than "Mx9@kL#pW2"
+  4. **PBKDF2 Strengthening:** The passphrase is strengthened with 100,000 iterations of PBKDF2, making brute force attacks computationally expensive
 
-The application features a command-line interface for managing tasks.
+- **why uses openpgp instead of normal crypto library?**
 
-| Command | Description | Example |
-|---|---|---|
-| `cd <list-name>` | Navigate to a specific list. | `cd work` |
-| `clear` | Scroll to the top of the page. | `clear` |
-| `add "<task>"` | Add a task to the current list. | `add "My new task"` |
-| `rm <task-id>` | Remove a task. | `rm 3` |
-| `rm <task-id> --done` | Mark a task as complete. | `rm 3 --done` |
+  **Answer:** We use OpenPGP instead of standard Web Crypto API for several important reasons:
 
-## 2. Technical Implementation
+  1. **Deterministic Key Generation:** OpenPGP allows us to generate the same private key from the same user ID + passphrase combination across different devices, which is crucial for cross-device data access
+  
+  2. **Battle-Tested Standard:** OpenPGP is a well-established, peer-reviewed cryptographic standard (RFC 4880) that has been used securely for decades
+  
+  3. **Key Management:** OpenPGP provides sophisticated key management features including passphrase-protected private keys, which separates authentication (passphrase) from encryption keys
+  
+  4. **Cross-Platform Compatibility:** OpenPGP encrypted data can be decrypted by any OpenPGP-compliant library or tool, providing better interoperability
+  
+  5. **Integrated Encryption/Signing:** OpenPGP combines encryption, compression, and integrity checking in a single standard, reducing implementation complexity
+  
+  6. **Mature JavaScript Implementation:** The openpgp.js library is mature, well-maintained, and designed specifically for browser environments
+  
+  **Comparison with Web Crypto API:**
+  - Web Crypto API requires manual key derivation, format handling, and doesn't provide deterministic key generation out of the box
+  - OpenPGP handles complex cryptographic operations (like PBKDF2 key derivation, padding, etc.) automatically
+  - OpenPGP provides better abstraction for secure messaging scenarios like ours
 
-### 2.1. Technology Stack
+## 3. user log in
+- a dialog for asking the user to enter the pass phrase
+- users don't have to reenter the pass phrase again if they stay logged in/ in the same session
 
-- **Frontend**: Next.js 15, React, TypeScript, Tailwind CSS
-- **State Management**: Zustand
-- **Backend**: Firebase Authentication, Cloud Firestore
-- **Encryption**: OpenPGP.js for end-to-end encryption
+**✅ Current Implementation:** Exactly right - session caching prevents re-entry during the same session.
 
-### 2.2. Architecture
+- **is the complete encryption workflow like the following?**
+  - fetch the encrypted json from firebase, compare the hash and the pass phrase digest and see if they match
+  - then use the pass phrase to decrypt the encrypted private key
+  - use the decrypted private key to decrypt the json
 
-- **Local-First**: The application is designed to work offline. Todo list data is stored in `localStorage` and synced to Firestore in the background.
-- **State Management**: Zustand is used for global state management, with separate stores for authentication, sidebar, and the Pomodoro timer to prevent unnecessary re-renders.
-- **Data Flow**: User actions update the local state and `localStorage` immediately. A debounced synchronization process then updates Firestore.
+**Answer:** Almost correct, but the actual workflow is:
+1. User enters passphrase
+2. System generates SHA-256 hash of passphrase and compares with stored hash in Firestore
+3. If hash matches, system retrieves the encrypted private key from Firestore
+4. Passphrase is used to decrypt the private key (the private key itself is encrypted with the passphrase)
+5. The decrypted private key is then used to decrypt all todo data from Firestore
+6. Decrypted data is stored in IndexedDB for local access
 
-### 2.3. Project Structure
+- **what does the program cache? the pass phrase or the encrypted private key?**
 
-```
-src/
-├── app/         # Main application logic
-├── components/  # Reusable UI components
-├── hooks/       # Custom React hooks
-├── lib/         # Core libraries (Firebase, OpenPGP, secureStorage)
-├── services/    # Firestore service layer
-└── stores/      # Zustand state management
-```
+**Answer:** The program now only caches the **decrypted private key** in memory during the session:
+- **Decrypted Private Key:** Cached in memory (not persisted) so it doesn't need to be re-decrypted on every operation
+- **No Passphrase Storage:** The passphrase is only used during login to decrypt the private key and is immediately discarded
+- **Location:** Stored in memory using a simple JavaScript Map for the duration of the session
 
-## 3. Authentication and Data Sync
+**Why this approach is better:**
+- **Simplified Logic:** No need to pass passphrases around in function calls
+- **Better Security:** Passphrase is not stored anywhere after initial authentication
+- **Performance:** Decrypted key is ready to use without repeated decryption operations
+- **Cleaner Code:** Functions like `encryptData(data, userId)` and `decryptData(encryptedData, userId)` are simpler
 
-### 3.1. End-to-End Encryption
+- **where is the cache store?**
 
-- **Passphrase**: On first login, you will be prompted to create a passphrase. This passphrase is used to encrypt your data *on your device* before it is sent to Firestore.
-- **Key Management**: Your passphrase is used to generate a public/private key pair. The public key and the encrypted private key are stored in Firestore. Your raw passphrase is never stored on any server.
-- **Secure Session Caching**: To avoid re-entering your passphrase on every page load, your passphrase and keys are cached in your browser's **localStorage** for the duration of your session. This cache is cleared when you log out. While the project includes a `secureStorage.ts` utility for IndexedDB, it is not currently used for caching sensitive session data.
+**Answer:** The cache is now stored in memory only:
+1. **In-Memory Key Cache:** A simple JavaScript Map that stores decrypted OpenPGP private keys
+2. **`TodoAppStorage` (IndexedDB):** Main application data (todos, settings) - unchanged
+3. **No Persistent Session Storage:** The decrypted private key is only kept in memory and cleared when the browser tab closes or user logs out
 
-### 3.2. Data Synchronization
+**Security Benefits:**
+- **No Disk Persistence:** Sensitive decrypted keys are never written to disk
+- **Automatic Cleanup:** Memory is automatically cleared when the tab closes
+- **Reduced Attack Surface:** No persistent storage of sensitive cryptographic material
 
-- **Anonymous Users**: Data is stored in `localStorage` only.
-- **Authenticated Users**:
-    - On login, data is synced from Firestore to `localStorage`.
-    - Changes to `localStorage` are debounced and synced to Firestore.
-    - Real-time listeners update `localStorage` with changes from other devices.
-- **Conflict Resolution**: The last-write-wins. Firestore is the source of truth.
+- **do the program store the decrypted json in the indexeddb so that the import/export function still works when logged in? and how does the system ensure this is secure?**
 
-### 3.3. Firestore Data Model
+**Answer:** 
+**What's Stored:** The program stores DECRYPTED todo data in IndexedDB for performance reasons. The encrypted data remains in Firestore.
 
-- **Users**: A `users` collection stores user profiles, public keys, and encrypted private keys.
-- **Todo Lists**: Each user has a `todoLists` sub-collection where each document represents a todo list. The document ID is a unique `storageKey`.
+**Security Measures:**
+1. **IndexedDB Security:** IndexedDB is more secure than localStorage with better XSS protection
+2. **Device-Level Security:** Data in IndexedDB is tied to your browser profile and domain
+3. **Session Management:** Cache is automatically cleared on logout
+4. **Connection Pooling:** Database connections timeout after 30 seconds of inactivity
+5. **No Persistent Storage:** Sensitive data (passphrase/keys) is only cached during active sessions
 
-## 4. Firebase Setup
+**Import/Export Security:**
+- Export: Data is exported in plain text (since you're authenticated and have access)
+- Import: Data is immediately re-encrypted and synced to Firestore
+- Reset: Clears all local data and can optionally clear Firestore data
 
-### 4.1. Project Creation
+## 4. user log out
+- clear out the indexeddb
 
-1.  Create a new project in the [Firebase Console](https://console.firebase.google.com/).
-2.  Register a new web app and copy the configuration.
-3.  Enable **Google Authentication**.
-4.  Create a **Firestore Database** in test mode for development.
-
-### 4.2. Security Rules
-
-Use the following Firestore security rules to restrict access to user data:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-
-      match /todoLists/{listId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-  }
-}
-```
-
-### 4.3. Environment Variables
-
-Create a `.env.local` file with your Firebase project configuration:
-
-```
-NEXT_PUBLIC_FIREBASE_API_KEY=...
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
-NEXT_PUBLIC_FIREBASE_APP_ID=...
-```
+**✅ Current Implementation:** On logout, the system:
+1. Clears all cached keys from secure IndexedDB storage
+2. Clears Firestore subscription cache
+3. Resets authentication state
+4. The main IndexedDB data remains (for potential anonymous use) but encrypted data cache is cleared

@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { firestoreService } from '@/services/firestoreService';
+import { indexedDBStorage } from '@/lib/indexedDBStorage';
 
-// Hook to automatically sync localStorage changes to Firestore
+// Hook to automatically sync IndexedDB storage changes to Firestore
 export const useFirestoreSync = () => {
   const { user } = useAuthStore();
   const [storageKeysToSync, setStorageKeysToSync] = useState<string[]>([]);
@@ -54,33 +55,35 @@ export const useFirestoreSync = () => {
   useEffect(() => {
     if (!user || storageKeysToSync.length === 0) return;
 
-    // Function to handle storage changes
-    const handleStorageChange = async (e: StorageEvent) => {
-      if (e.key && storageKeysToSync.includes(e.key)) {
+    // Function to handle IndexedDB storage changes
+    const handleStorageChange = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { key } = customEvent.detail || {};
+      if (key && storageKeysToSync.includes(key)) {
         try {
-          await firestoreService.syncLocalStorageChange(user, e.key);
+          await firestoreService.syncIndexedDBStorageChange(user, key);
         } catch (error) {
           console.error('Error syncing storage change to Firestore:', error);
         }
       }
     };
 
-    // Listen for storage events (changes from other tabs/windows)
-    window.addEventListener('storage', handleStorageChange);
+    // Listen for IndexedDB storage events
+    window.addEventListener('indexeddb-storage', handleStorageChange);
 
-    // Also create a mutation observer to watch for direct localStorage changes
+    // Debounced sync for IndexedDB changes
     let timeoutId: NodeJS.Timeout;
     const debouncedSync = (storageKey: string) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
-        const { publicKey } = useAuthStore.getState();
-        if (!publicKey) {
-          console.warn(`Sync for ${storageKey} skipped: Public key not available yet.`);
+        const { privateKey, passphrase } = useAuthStore.getState();
+        if (!privateKey || !passphrase) {
+          console.warn(`Sync for ${storageKey} skipped: Private key or passphrase not available yet.`);
           return;
         }
         try {
           console.log(`🔄 Syncing ${storageKey} to Firestore after 1s debounce`);
-          await firestoreService.syncLocalStorageChange(user, storageKey);
+          await firestoreService.syncIndexedDBStorageChange(user, storageKey);
           console.log(`✅ Successfully synced ${storageKey} to Firestore`);
         } catch (error) {
           console.error(`❌ Error syncing ${storageKey} to Firestore:`, error);
@@ -88,57 +91,64 @@ export const useFirestoreSync = () => {
       }, 1000); // Debounce for 1 second
     };
 
-    // Override localStorage setItem to trigger sync
-    const originalSetItem = localStorage.setItem;
-    localStorage.setItem = function(key: string, value: string) {
-      originalSetItem.call(this, key, value);
+    // Set up a custom event listener for manual sync triggers
+    const handleManualSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { key } = customEvent.detail || {};
       if (storageKeysToSync.includes(key)) {
-        console.log(`📝 localStorage change detected for ${key}, scheduling Firestore sync`);
+        console.log(`📝 IndexedDB storage change detected for ${key}, scheduling Firestore sync`);
         debouncedSync(key);
       }
     };
 
+    window.addEventListener('indexeddb-manual-sync', handleManualSync);
+
     // Cleanup function
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      localStorage.setItem = originalSetItem;
+      window.removeEventListener('indexeddb-storage', handleStorageChange);
+      window.removeEventListener('indexeddb-manual-sync', handleManualSync);
       clearTimeout(timeoutId);
     };
   }, [user, storageKeysToSync]);
 };
 
-// Hook to listen for Firestore updates and update localStorage
+// Hook to listen for Firestore updates and update IndexedDB storage
 export const useFirestoreListener = () => {
   const { user } = useAuthStore();
   const [previousUserUid, setPreviousUserUid] = useState<string | null>(null);
 
-  // Clear custom localStorage data when user logs out
+  // Clear custom IndexedDB storage data when user logs out
   useEffect(() => {
     const currentUserUid = user?.uid || null;
     
     console.log('Auth state changed in listener:', { previousUserUid, currentUserUid });
     
     if (previousUserUid && !currentUserUid) {
-      // User logged out, clear ALL todo-related localStorage data
-      console.log('🧹 User logged out detected, clearing all todo localStorage data');
+      // User logged out, clear ALL todo-related IndexedDB storage data
+      console.log('🧹 User logged out detected, clearing all todo IndexedDB storage data');
       
-      // Get all localStorage keys
-      const allKeys = Object.keys(localStorage);
-      console.log('All localStorage keys before cleanup:', allKeys);
-      
-      // Remove ALL todo-related localStorage keys (including default template)
-      allKeys.forEach(key => {
-        if (key.startsWith('todos')) {
-          console.log(`🗑️ Removing storage key: ${key}`);
-          localStorage.removeItem(key);
+      const clearStorageData = async () => {
+        // Get all IndexedDB storage keys
+        const allKeys = await indexedDBStorage.getAllKeys();
+        console.log('All IndexedDB storage keys before cleanup:', allKeys);
+        
+        // Remove ALL todo-related storage keys (including default template)
+        for (const key of allKeys) {
+          if (key.startsWith('todos')) {
+            console.log(`🗑️ Removing storage key: ${key}`);
+            await indexedDBStorage.removeItem(key);
+          }
         }
-      });
+        
+        const remainingKeys = await indexedDBStorage.getAllKeys();
+        console.log('All IndexedDB storage keys after cleanup:', remainingKeys);
+        
+        // Dispatch event to notify components that data has been reset
+        window.dispatchEvent(new CustomEvent('user-logout-reset'));
+        console.log('📢 Dispatched user-logout-reset event');
+      };
       
-      console.log('All localStorage keys after cleanup:', Object.keys(localStorage));
-      
-      // Dispatch event to notify components that data has been reset
-      window.dispatchEvent(new CustomEvent('user-logout-reset'));
-      console.log('📢 Dispatched user-logout-reset event');
+      clearStorageData();
     }
     
     setPreviousUserUid(currentUserUid);
@@ -148,11 +158,11 @@ export const useFirestoreListener = () => {
     if (!user) return;
 
     // Subscribe to real-time updates from Firestore
-    const unsubscribe = firestoreService.subscribeToUserTodoLists(user, (lists) => {
-      // Update localStorage with Firestore data using the storageKey from Firestore
-      Object.entries(lists).forEach(([title, { todos, storageKey }]) => {
+    const unsubscribe = firestoreService.subscribeToUserTodoLists(user, async (lists) => {
+      // Update IndexedDB storage with Firestore data using the storageKey from Firestore
+      for (const [title, { todos, storageKey }] of Object.entries(lists)) {
         if (storageKey) {
-          const currentData = localStorage.getItem(storageKey);
+          const currentData = await indexedDBStorage.getItem(storageKey);
           const todosForStorage = todos.map(todo => ({
             text: todo.text,
             completed: todo.completed
@@ -161,14 +171,14 @@ export const useFirestoreListener = () => {
           
           // Only update if data has changed to avoid infinite loops
           if (currentData !== newData) {
-            localStorage.setItem(storageKey, newData);
+            await indexedDBStorage.setItem(storageKey, newData);
             // Dispatch event to notify components of the change
             window.dispatchEvent(new CustomEvent('firestore-sync-update', { 
               detail: { storageKey, title, todos: todosForStorage } 
             }));
           }
         }
-      });
+      }
     });
 
     return () => {
@@ -177,7 +187,7 @@ export const useFirestoreListener = () => {
   }, [user]);
 };
 
-// Hook to reset all data in Firestore and local storage
+// Hook to reset all data in Firestore and IndexedDB storage
 export const useResetAllData = () => {
   const { user } = useAuthStore();
 
@@ -189,13 +199,13 @@ export const useResetAllData = () => {
     try {
       await firestoreService.resetAllData(user);
 
-      // Clear all todo-related localStorage
-      const allKeys = Object.keys(localStorage);
-      allKeys.forEach((key) => {
+      // Clear all todo-related IndexedDB storage
+      const allKeys = await indexedDBStorage.getAllKeys();
+      for (const key of allKeys) {
         if (key.startsWith("todos")) {
-          localStorage.removeItem(key);
+          await indexedDBStorage.removeItem(key);
         }
-      });
+      }
 
       // Dispatch event to notify components that data has been reset
       window.dispatchEvent(new CustomEvent("user-logout-reset"));

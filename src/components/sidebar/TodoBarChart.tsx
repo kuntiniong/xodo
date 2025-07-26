@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ShadowIn from "@/components/animations/ShadowIn";
+import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
 interface Todo {
   text: string;
@@ -7,18 +8,18 @@ interface Todo {
 }
 
 /**
- * Get the list of todos using localStorage instead of cookies.
+ * Get the list of todos using IndexedDB instead of localStorage.
  * @param key The key used to store the todos.
  * @returns An array of Todo items.
  */
-function getTodosFromLocalStorage(key: string): Todo[] {
-  if (typeof window === "undefined" || !window.localStorage) return [];
-  const saved = localStorage.getItem(key);
+async function getTodosFromIndexedDB(key: string): Promise<Todo[]> {
+  if (typeof window === "undefined") return [];
+  const saved = await indexedDBStorage.getItem(key);
   if (!saved) return [];
   try {
     return JSON.parse(saved);
   } catch (error) {
-    console.error("Failed to parse todos from localStorage:", error);
+    console.error("Failed to parse todos from IndexedDB:", error);
     return [];
   }
 }
@@ -46,10 +47,10 @@ export default function TodoBarChart() {
   const [counts, setCounts] = useState<number[]>([0, 0, 0, 0, 0, 0]);
 
   useEffect(() => {
-    const updateCounts = () => {
-      setCounts(
-        TODO_KEYS.map(({ key }) => {
-          const todos = getTodosFromLocalStorage(key);
+    const updateCounts = async () => {
+      const newCounts = await Promise.all(
+        TODO_KEYS.map(async ({ key }) => {
+          const todos = await getTodosFromIndexedDB(key);
           if (Array.isArray(todos)) {
             // Count only unchecked todos.
             return todos.filter((todo) => !todo.completed).length;
@@ -57,6 +58,7 @@ export default function TodoBarChart() {
           return 0;
         })
       );
+      setCounts(newCounts);
     };
 
     // Update counts at mount.
@@ -69,12 +71,15 @@ export default function TodoBarChart() {
 
     // Listen for custom events that signal an update.
     window.addEventListener("todos-updated", handleTodosUpdate);
+    // Also listen for IndexedDB storage events
+    window.addEventListener("indexeddb-storage", handleTodosUpdate);
 
     // Fallback polling in case the event is missed.
     const interval = setInterval(updateCounts, 200);
 
     return () => {
       window.removeEventListener("todos-updated", handleTodosUpdate);
+      window.removeEventListener("indexeddb-storage", handleTodosUpdate);
       clearInterval(interval);
     };
   }, []);

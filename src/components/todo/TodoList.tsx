@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import ShadowIn from "@/components/animations/ShadowIn";
 import DecryptedText from "@/components/animations/DecryptedText";
+import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
 // Todo interface remains the same
 export interface Todo {
@@ -11,21 +12,21 @@ export interface Todo {
 }
 
 // ==================================================================
-// MODIFICATION: Replaced cookie functions with localStorage functions
+// MODIFICATION: Replaced localStorage functions with IndexedDB functions
 // ==================================================================
 
 /**
- * Retrieves the list of todos from localStorage.
- * @param key The key to use for storing the todos in localStorage.
+ * Retrieves the list of todos from IndexedDB.
+ * @param key The key to use for storing the todos in IndexedDB.
  * @returns An array of Todo items.
  */
-function getTodosFromLocalStorage(key: string): Todo[] {
+async function getTodosFromIndexedDB(key: string): Promise<Todo[]> {
   // Check for SSR environments where `window` is not defined.
-  if (typeof window === "undefined" || !window.localStorage) {
+  if (typeof window === "undefined") {
     return [];
   }
   
-  const savedTodos = window.localStorage.getItem(key);
+  const savedTodos = await indexedDBStorage.getItem(key);
   if (!savedTodos) {
     return [];
   }
@@ -55,19 +56,19 @@ function getTodosFromLocalStorage(key: string): Todo[] {
     
     return validTodos;
   } catch (error) {
-    console.error("Failed to parse todos from localStorage:", error);
+    console.error("Failed to parse todos from IndexedDB:", error);
     return [];
   }
 }
 
 /**
- * Saves the list of todos to localStorage.
+ * Saves the list of todos to IndexedDB.
  * @param key The key to use for storing the todos.
  * @param todos The array of Todo items to save.
  */
-function setTodosToLocalStorage(key: string, todos: Todo[]) {
+async function setTodosToIndexedDB(key: string, todos: Todo[]): Promise<void> {
   // Check for SSR environments.
-  if (typeof window === "undefined" || !window.localStorage) {
+  if (typeof window === "undefined") {
     return;
   }
   
@@ -79,9 +80,9 @@ function setTodosToLocalStorage(key: string, todos: Todo[]) {
   
   try {
     // Convert the todos array to a JSON string and save it.
-    window.localStorage.setItem(key, JSON.stringify(todos));
+    await indexedDBStorage.setItem(key, JSON.stringify(todos));
   } catch (error) {
-    console.error("Failed to save todos to localStorage:", error);
+    console.error("Failed to save todos to IndexedDB:", error);
   }
 }
 
@@ -119,30 +120,30 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
     setMounted(true);
   }, []);
 
-  // This effect loads the initial todos from localStorage once the component is mounted.
+  // This effect loads the initial todos from IndexedDB once the component is mounted.
   useEffect(() => {
     if (mounted) {
-      // MODIFICATION: Call the new localStorage function with additional safety check.
-      const loadedTodos = getTodosFromLocalStorage(storageKey);
-      
-      // Ensure we always have an array, even if something went wrong
-      if (Array.isArray(loadedTodos)) {
-        setTodos(loadedTodos);
-      } else {
-        console.warn(`Loaded todos is not an array for ${storageKey}, resetting to empty array`);
-        setTodos([]);
-      }
-      
-      setHasLoaded(true);
+      // MODIFICATION: Call the new IndexedDB function with additional safety check.
+      getTodosFromIndexedDB(storageKey).then((loadedTodos) => {
+        // Ensure we always have an array, even if something went wrong
+        if (Array.isArray(loadedTodos)) {
+          setTodos(loadedTodos);
+        } else {
+          console.warn(`Loaded todos is not an array for ${storageKey}, resetting to empty array`);
+          setTodos([]);
+        }
+        
+        setHasLoaded(true);
+      });
     }
   }, [storageKey, mounted]);
 
-  // This effect saves the todos to localStorage whenever they change.
+  // This effect saves the todos to IndexedDB whenever they change.
   useEffect(() => {
     // Ensure we only save after initial load and on the client.
     if (hasLoaded && mounted) {
-      // MODIFICATION: Call the new localStorage function.
-      setTodosToLocalStorage(storageKey, todos);
+      // MODIFICATION: Call the new IndexedDB function.
+      setTodosToIndexedDB(storageKey, todos);
       // This event can be used by other components to react to todo list changes.
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("todos-updated"));
@@ -192,10 +193,11 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
   // Listen for logout reset event to clear todos
   useEffect(() => {
     const handleLogoutReset = () => {
-      console.log(`🔄 Logout reset detected for ${title}, reloading from localStorage`);
-      // Reload todos from localStorage (which should now be empty after logout)
-      const loadedTodos = getTodosFromLocalStorage(storageKey);
-      setTodos(Array.isArray(loadedTodos) ? loadedTodos : []);
+      console.log(`🔄 Logout reset detected for ${title}, reloading from IndexedDB`);
+      // Reload todos from IndexedDB (which should now be empty after logout)
+      getTodosFromIndexedDB(storageKey).then((loadedTodos) => {
+        setTodos(Array.isArray(loadedTodos) ? loadedTodos : []);
+      });
     };
 
     window.addEventListener('user-logout-reset', handleLogoutReset);

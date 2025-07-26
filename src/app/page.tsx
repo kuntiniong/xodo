@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useTodoStore } from "@/stores/todoStore";
 import { firestoreService } from "@/services/firestoreService";
 import { PassphraseDialog } from "@/components/auth/PassphraseDialog";
+import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
 const ClientOnlyTodoGrid = dynamic(() => import("@/components/todo/TodoGrid"), {
   ssr: false,
@@ -84,15 +85,15 @@ export default function Home() {
     if (!passphrase) return;
 
     console.log('🔄 Setting up real-time Firestore subscription');
-    const unsubscribe = firestoreService.subscribeToUserTodoLists(user, (lists) => {
-      // Update localStorage when Firestore data changes
-      Object.values(lists).forEach(list => {
+    const unsubscribe = firestoreService.subscribeToUserTodoLists(user, async (lists) => {
+      // Update IndexedDB storage when Firestore data changes
+      for (const list of Object.values(lists)) {
         const todosForStorage = list.todos.map(todo => ({
           text: todo.text,
           completed: todo.completed
         }));
-        localStorage.setItem(list.storageKey, JSON.stringify(todosForStorage));
-      });
+        await indexedDBStorage.setItem(list.storageKey, JSON.stringify(todosForStorage));
+      }
       
       // Dispatch event to update UI components
       window.dispatchEvent(new CustomEvent('todos-updated'));

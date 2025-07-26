@@ -1,26 +1,30 @@
 import { useState, useEffect } from "react";
 import PomodoroTimer from "./PomodoroTimer";
 import TodoBarChart from "./TodoBarChart";
-import LocalStorageViewer from "./LocalStorageViewer";
+import StorageViewer from "./LocalStorageViewer";
 import { useTimerControlStore } from "@/stores/timerStore";
 import { useSidebarStore } from "@/stores/sidebarStore";
+import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
 export default function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useSidebarStore();
   const [showVisualization, setShowVisualization] = useState(true); // true = TodoBarChart, false = PomodoroTimer
   const { isRunning } = useTimerControlStore();
 
-  // Load toggle state from localStorage on component mount
+  // Load toggle state from IndexedDB storage on component mount
   useEffect(() => {
-    const savedToggleState = localStorage.getItem("sidebar-toggle-state");
-    if (savedToggleState !== null) {
-      setShowVisualization(JSON.parse(savedToggleState));
-    }
+    const loadToggleState = async () => {
+      const savedToggleState = await indexedDBStorage.getItem("sidebar-toggle-state");
+      if (savedToggleState !== null) {
+        setShowVisualization(JSON.parse(savedToggleState));
+      }
+    };
+    loadToggleState();
   }, []);
 
-  // Save toggle state to localStorage whenever it changes
+  // Save toggle state to IndexedDB storage whenever it changes
   useEffect(() => {
-    localStorage.setItem(
+    indexedDBStorage.setItem(
       "sidebar-toggle-state",
       JSON.stringify(showVisualization)
     );
@@ -119,7 +123,7 @@ export default function Sidebar() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 p-8 pt-16">
           <PomodoroTimer />
           <TodoBarChart />
-          <LocalStorageViewer />
+          <StorageViewer />
         </div>
       </div>
 
@@ -127,7 +131,7 @@ export default function Sidebar() {
       <div className="hidden lg:block w-80">
         <div className="sticky top-22 flex flex-col gap-8">
           <ToggleableComponent />
-          <LocalStorageViewer />
+          <StorageViewer />
         </div>
       </div>
     </>

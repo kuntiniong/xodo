@@ -1,15 +1,53 @@
 // Secure key storage using IndexedDB for better XSS protection
+import { indexedDBStorage } from './indexedDBStorage';
+
 class SecureKeyStorage {
   private dbName = 'TodoAppSecureStorage';
   private version = 1;
   private storeName = 'keys';
+  private dbPromise: Promise<IDBDatabase> | null = null;
+  private db: IDBDatabase | null = null;
+  private connectionTimeout: NodeJS.Timeout | null = null;
 
   private async openDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
+    // If we already have a valid connection, return it
+    if (this.db && !this.db.objectStoreNames.contains('__closed__')) {
+      this.resetConnectionTimer();
+      return this.db;
+    }
+
+    // If there's already a connection promise in progress, wait for it
+    if (this.dbPromise) {
+      return this.dbPromise;
+    }
+
+    this.dbPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.version);
       
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => {
+        this.dbPromise = null;
+        this.db = null;
+        reject(request.error);
+      };
+      
+      request.onsuccess = () => {
+        const db = request.result;
+        this.db = db;
+        this.resetConnectionTimer();
+        
+        // Handle unexpected closes
+        db.onclose = () => {
+          this.db = null;
+          this.dbPromise = null;
+        };
+        
+        db.onerror = () => {
+          this.db = null;
+          this.dbPromise = null;
+        };
+        
+        resolve(db);
+      };
       
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
@@ -18,9 +56,42 @@ class SecureKeyStorage {
         }
       };
     });
+
+    return this.dbPromise;
   }
 
-  async storePrivateKey(userId: string, privateKey: string, passphrase: string): Promise<void> {
+  // Reset the connection timer to keep the database open
+  private resetConnectionTimer(): void {
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+    }
+    
+    // Close the connection after 30 seconds of inactivity
+    this.connectionTimeout = setTimeout(() => {
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+        this.dbPromise = null;
+      }
+    }, 30000);
+  }
+
+  // Force close the database connection
+  private closeConnection(): void {
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = null;
+    }
+    
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+    
+    this.dbPromise = null;
+  }
+
+  async storePrivateKey(userId: string, privateKeyArmored: string, passphrase: string): Promise<void> {
     const db = await this.openDB();
     const transaction = db.transaction([this.storeName], 'readwrite');
     const store = transaction.objectStore(this.storeName);
@@ -28,7 +99,7 @@ class SecureKeyStorage {
     await new Promise<void>((resolve, reject) => {
       const request = store.put({
         id: `privateKey_${userId}`,
-        privateKey,
+        privateKeyArmored,
         passphrase,
         timestamp: Date.now()
       });
@@ -37,10 +108,10 @@ class SecureKeyStorage {
       request.onerror = () => reject(request.error);
     });
     
-    db.close();
+    // Don't close the database - let the timer handle it
   }
 
-  async getPrivateKey(userId: string): Promise<{privateKey: string; passphrase: string} | null> {
+  async getPrivateKey(userId: string): Promise<{privateKeyArmored: string; passphrase: string} | null> {
     const db = await this.openDB();
     const transaction = db.transaction([this.storeName], 'readonly');
     const store = transaction.objectStore(this.storeName);
@@ -51,11 +122,11 @@ class SecureKeyStorage {
       request.onerror = () => reject(request.error);
     });
     
-    db.close();
+    // Don't close the database - let the timer handle it
     
     if (result) {
       return {
-        privateKey: result.privateKey,
+        privateKeyArmored: result.privateKeyArmored,
         passphrase: result.passphrase
       };
     }
@@ -74,7 +145,7 @@ class SecureKeyStorage {
       request.onerror = () => reject(request.error);
     });
     
-    db.close();
+    // Don't close the database - let the timer handle it
   }
 
   async clearAllKeys(): Promise<void> {
@@ -88,7 +159,7 @@ class SecureKeyStorage {
       request.onerror = () => reject(request.error);
     });
     
-    db.close();
+    // Don't close the database - let the timer handle it
   }
 }
 

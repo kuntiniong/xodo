@@ -15,16 +15,16 @@ import {
 } from 'firebase/firestore';
 import { auth, googleProvider, db } from '@/lib/firebase';
 import { firestoreService } from '@/services/firestoreService';
-import { generateKeyPair, generateDeterministicKeyPair, decryptData, validatePassphraseWithPrivateKey } from '@/lib/openpgp';
+import { generatePrivateKey, generateDeterministicPrivateKey, decryptDataWithPassphrase, cacheDecryptedPrivateKey, validatePassphraseWithPrivateKey } from '@/lib/openpgp';
 import { secureKeyStorage } from '@/lib/secureStorage';
+import { keyCache } from '@/lib/keyCache';
+import { indexedDBStorage } from '@/lib/indexedDBStorage';
 
 export interface AuthState {
   user: User | null;
   isLoading: boolean;
   isInitialized: boolean;
-  publicKey: string | null;
   privateKey: string | null;
-  passphrase?: string;
   isPassphraseRequired: boolean;
   passphraseMode: 'create' | 'unlock';
   passphraseError: string | null;
@@ -47,9 +47,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: false,
   isInitialized: false,
-  publicKey: null,
   privateKey: null,
-  passphrase: undefined,
   isPassphraseRequired: false,
   passphraseMode: 'unlock',
   passphraseError: null,
@@ -64,6 +62,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     
     const newAuthUnsubscribe = onAuthStateChanged(auth, async (user) => {
+      const currentUser = get().user;
+      
+      // Skip if this is the same user (prevents redundant operations on page reload)
+      if (currentUser && user && currentUser.uid === user.uid) {
+        console.log('Same user detected, skipping redundant authentication processing');
+        set({ isInitialized: true });
+        return;
+      }
+      
       set({ user, isInitialized: true });
       
       if (user) {
@@ -83,9 +90,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: null,
           isLoading: false,
           isInitialized: true,
-          publicKey: null,
           privateKey: null,
-          passphrase: undefined,
           isPassphraseRequired: false,
           passphraseMode: 'unlock',
           passphraseError: null,
@@ -147,16 +152,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const { firestoreUnsubscribe, user } = get();
       
-      // Clean up cached keys
+      // Clean up cached keys (async)
       if (user) {
-        await secureKeyStorage.clearAllKeys();
-        console.log('Cleared all cached session data');
+        await keyCache.clearKey(user.uid);
+        console.log('Cleared cached decrypted key for user');
       }
       
-      // Clean up Firestore subscription
+      // Clean up Firestore subscription and cache
       if (firestoreUnsubscribe) {
         firestoreUnsubscribe();
       }
+      
+      // Clear Firestore service cache
+      firestoreService.clearCache();
       
       // Sign out from Firebase, which will trigger onAuthStateChanged
       await firebaseSignOut(auth);
@@ -193,7 +201,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loadUserDataFromFirestore: async (passphrase: string) => {
-    const { user, publicKey } = get();
+    const { user } = get();
     if (!user) return;
 
     try {
@@ -233,24 +241,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('Invalid passphrase');
       }
 
-      // Set the private key in memory
-      set({ privateKey: storedPrivateKey });
-      
-      // Cache the keys securely for session persistence
-      await secureKeyStorage.storePrivateKey(user.uid, storedPrivateKey, passphrase);
-      console.log('Keys cached securely for session persistence');
+      // Cache the decrypted private key for the session
+      await cacheDecryptedPrivateKey(user.uid, storedPrivateKey, passphrase);
+      console.log('Decrypted private key cached for session');
 
-      // Load and decrypt user data
-      const todoLists = await firestoreService.loadAllTodoListsFromFirestore(user, passphrase);
+      // Load and decrypt user data using the cached key approach
+      const todoLists = await firestoreService.loadAllTodoListsFromFirestore(user);
       
-      // Populate localStorage with the loaded data
-      Object.values(todoLists).forEach(list => {
+      // Populate IndexedDB with the loaded data
+      for (const list of Object.values(todoLists)) {
         const todosForStorage = list.todos.map(todo => ({
           text: todo.text,
           completed: todo.completed
         }));
-        localStorage.setItem(list.storageKey, JSON.stringify(todosForStorage));
-      });
+        await indexedDBStorage.setItem(list.storageKey, JSON.stringify(todosForStorage));
+      }
       
       // Update todoStore with the loaded data
       const { setTodoLists } = require('@/stores/todoStore').useTodoStore.getState();
@@ -259,19 +264,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Dispatch events to update UI
       window.dispatchEvent(new CustomEvent('todos-updated'));
       
-      console.log('User data loaded from Firestore and synced to localStorage');
+      console.log('User data loaded from Firestore and synced to IndexedDB');
       set({ 
         isPassphraseRequired: false, 
-        passphrase: passphrase,
         passphraseError: null,
         isLoading: false
       });
       
-      // Start Firestore subscription after successful authentication
-      if (user) {
+      // Start Firestore subscription after successful authentication ONLY if not already subscribed
+      const { firestoreUnsubscribe: currentSubscription } = get();
+      if (user && !currentSubscription) {
         console.log('Starting Firestore subscription after successful authentication...');
         const firestoreUnsubscribe = firestoreService.subscribeToUserTodoLists(user);
         set({ firestoreUnsubscribe });
+      } else if (currentSubscription) {
+        console.log('Firestore subscription already active, skipping duplicate...');
       }
     } catch (error) {
       console.error('Error loading user data from Firestore:', error);
@@ -290,8 +297,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ passphraseError: null });
       
-      // Generate keys using deterministic method based on user ID
-      const { privateKey, publicKey } = await generateDeterministicKeyPair(user.uid, passphrase);
+      // Generate private key using deterministic method based on user ID
+      const privateKey = await generateDeterministicPrivateKey(user.uid, passphrase);
       
       // Create a hash of the passphrase for validation (not the passphrase itself)
       const encoder = new TextEncoder();
@@ -303,32 +310,41 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('Generated passphrase hash:', passphraseHash);
       console.log('Passphrase length:', passphrase.length);
       
-      // Only store the PUBLIC key and passphrase hash in Firebase
-      // The private key will be encrypted and stored as well
+      // Store the encrypted private key and passphrase hash in Firebase
       const userDocRef = doc(db, 'users', user.uid);
       await updateDoc(userDocRef, {
-        publicKey, // Public key for encrypting new data
-        encryptedPrivateKey: privateKey, // Encrypted private key for decryption
+        encryptedPrivateKey: privateKey, // Encrypted private key for encryption/decryption
         passphraseHash, // Hash for validation, not the actual passphrase
         hasEncryptionKeys: true
       });
       
-      console.log('Successfully stored public key and passphrase hash to Firebase');
+      console.log('Successfully stored private key and passphrase hash to Firebase');
       
-      // Store keys in memory for this session only
+      // Update session state
       set({ 
-        publicKey, 
-        privateKey, 
         isPassphraseRequired: false, 
-        passphrase,
         passphraseError: null
       });
+
+      // Cache the decrypted private key for the session
+      await cacheDecryptedPrivateKey(user.uid, privateKey, passphrase);
+      console.log('Decrypted private key cached for session');
       
       // Check if this is a new user (no todo lists exist yet)
       const todoListsMetadata = await firestoreService.getAllTodoListsWithMetadata(user);
       if (Object.keys(todoListsMetadata).length === 0) {
         console.log('New user detected, creating default template lists...');
         await get().createDefaultTemplateForNewUser();
+      }
+
+      // Start Firestore subscription after successful key generation ONLY if not already subscribed
+      const { firestoreUnsubscribe: currentSubscription } = get();
+      if (!currentSubscription) {
+        console.log('Starting Firestore subscription after key generation...');
+        const firestoreUnsubscribe = firestoreService.subscribeToUserTodoLists(user);
+        set({ firestoreUnsubscribe });
+      } else {
+        console.log('Firestore subscription already active, skipping duplicate...');
       }
     } catch (error) {
       console.error('Error generating and storing keys:', error);
@@ -351,25 +367,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     ];
 
     try {
-      for (const listConfig of defaultLists) {
-        // Get any existing localStorage data
+      // Prepare lists with existing localStorage data
+      const listsWithData = defaultLists.map(listConfig => {
         const existingTodos = localStorage.getItem(listConfig.storageKey);
         const todos = existingTodos ? JSON.parse(existingTodos) : [];
         
-        // Create the list in Firestore
-        await firestoreService.createTodoList(
-          user,
-          listConfig.title,
-          listConfig.storageKey,
-          Array.isArray(todos) ? todos.map((todo, index) => ({
+        return {
+          ...listConfig,
+          todos: Array.isArray(todos) ? todos.map((todo, index) => ({
             id: todo.id || `${Date.now()}_${index}`,
             text: todo.text || '',
             completed: todo.completed || false,
             createdAt: new Date(),
             updatedAt: new Date(),
           })) : []
-        );
-      }
+        };
+      });
+
+      // Create all lists in batch to minimize Firestore subscription triggers
+      await firestoreService.createMultipleTodoListsBatch(user, listsWithData);
       
       console.log('✅ Default template lists created for new user');
     } catch (error) {
@@ -386,10 +402,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
         const data = userDoc.data();
-        if (data.publicKey && data.hasEncryptionKeys && data.passphraseHash) {
+        if (data.encryptedPrivateKey && data.hasEncryptionKeys && data.passphraseHash) {
           // User has keys and passphrase hash, they need to unlock with passphrase
           set({ 
-            publicKey: data.publicKey,
             isPassphraseRequired: true,
             passphraseMode: 'unlock'
           });
@@ -416,23 +431,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   checkCachedSession: async () => {
-    const { user } = get();
+    const { user, firestoreUnsubscribe } = get();
     if (!user) return false;
 
     try {
-      // Check if we have cached keys for this user
-      const cachedData = await secureKeyStorage.getPrivateKey(user.uid);
-      if (cachedData) {
-        console.log('Found cached session, restoring keys...');
+      // Check if we have a cached decrypted private key for this user (async check)
+      const hasKey = await keyCache.hasKey(user.uid);
+      if (hasKey) {
+        console.log('Found cached session, decrypted private key available...');
+        
         set({ 
-          privateKey: cachedData.privateKey,
-          passphrase: cachedData.passphrase,
           isPassphraseRequired: false 
         });
 
-        // Start Firestore subscription
-        const firestoreUnsubscribe = firestoreService.subscribeToUserTodoLists(user);
-        set({ firestoreUnsubscribe });
+        // Start Firestore subscription only if not already subscribed
+        if (!firestoreUnsubscribe) {
+          console.log('Starting Firestore subscription from cached session...');
+          const newFirestoreUnsubscribe = firestoreService.subscribeToUserTodoLists(user);
+          set({ firestoreUnsubscribe: newFirestoreUnsubscribe });
+        } else {
+          console.log('Firestore subscription already active, skipping...');
+        }
 
         return true;
       }

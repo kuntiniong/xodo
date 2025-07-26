@@ -3,38 +3,48 @@ import ShadowIn from "@/components/animations/ShadowIn";
 import { useResetAllData } from "@/hooks/useFirestoreSync";
 import { useAuthStore } from "@/stores/authStore";
 import { firestoreService } from "@/services/firestoreService";
+import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
-// Helper to get all localStorage items as an object
-const getAllLocalStorage = (): Record<string, string> => {
-  if (typeof window === "undefined" || !window.localStorage) return {};
-  const storage: Record<string, string> = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key) {
-      storage[key] = localStorage.getItem(key) || "";
-    }
-  }
-  return storage;
+// Helper to get all IndexedDB storage items as an object
+const getAllIndexedDBStorage = async (): Promise<Record<string, string>> => {
+  if (typeof window === "undefined") return {};
+  return await indexedDBStorage.getAllItems();
 };
 
-export default function LocalStorageViewer() {
-  const [items, setItems] = useState<Record<string, string>>(getAllLocalStorage());
+export default function StorageViewer() {
+  const [items, setItems] = useState<Record<string, string>>({});
   const lastItemsRef = useRef("");
 
-  // Poll for localStorage changes every 500ms
+  // Poll for IndexedDB storage changes every 500ms
   useEffect(() => {
-    const interval = setInterval(() => {
-      const all = getAllLocalStorage();
+    const updateItems = async () => {
+      const all = await getAllIndexedDBStorage();
       const serialized = JSON.stringify(all);
       if (serialized !== lastItemsRef.current) {
         setItems(all);
         lastItemsRef.current = serialized;
       }
-    }, 500);
-    return () => clearInterval(interval);
+    };
+
+    // Initial load
+    updateItems();
+
+    const interval = setInterval(updateItems, 500);
+    
+    // Listen for custom IndexedDB storage events
+    const handleStorageEvent = () => {
+      updateItems();
+    };
+    
+    window.addEventListener("indexeddb-storage", handleStorageEvent);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("indexeddb-storage", handleStorageEvent);
+    };
   }, []);
 
-  // Helper: get only localStorage items that are related to todos.
+  // Helper: get only storage items that are related to todos.
   const getTodoItems = () => {
     const todoItems: Record<string, string> = {};
     Object.keys(items).forEach((key) => {
@@ -61,14 +71,14 @@ export default function LocalStorageViewer() {
       if (!data || typeof data !== "object") throw new Error("Invalid format");
 
       if (user) {
-        // For logged-in users, first update localStorage, then sync to Firestore
-        Object.keys(data).forEach((key) => {
-          if (typeof data[key] === "string") {
-            localStorage.setItem(key, data[key]);
+        // For logged-in users, first update IndexedDB storage, then sync to Firestore
+        for (const [key, value] of Object.entries(data)) {
+          if (typeof value === "string") {
+            await indexedDBStorage.setItem(key, value);
           }
-        });
+        }
         
-        // Sync the updated localStorage to Firestore
+        // Sync the updated storage to Firestore
         await syncLocalDataToFirestore();
         
         // Reload data from Firestore to ensure consistency
@@ -77,17 +87,18 @@ export default function LocalStorageViewer() {
           await loadUserDataFromFirestore(passphrase);
         }
       } else {
-        // For non-logged-in users, save directly to localStorage
-        Object.keys(data).forEach((key) => {
-          if (typeof data[key] === "string") {
-            localStorage.setItem(key, data[key]);
+        // For non-logged-in users, save directly to IndexedDB storage
+        for (const [key, value] of Object.entries(data)) {
+          if (typeof value === "string") {
+            await indexedDBStorage.setItem(key, value);
           }
-        });
+        }
         // Dispatch a custom event to notify other components of the change
-        window.dispatchEvent(new CustomEvent("local-storage-imported"));
+        window.dispatchEvent(new CustomEvent("indexeddb-storage-imported"));
       }
 
-      setItems(getAllLocalStorage());
+      const newItems = await getAllIndexedDBStorage();
+      setItems(newItems);
       setImportString("");
       setShowImport(false);
     } catch (e) {
@@ -95,9 +106,10 @@ export default function LocalStorageViewer() {
     }
   };
 
-  const deleteItem = (key: string) => {
-    localStorage.removeItem(key);
-    setItems(getAllLocalStorage());
+  const deleteItem = async (key: string) => {
+    await indexedDBStorage.removeItem(key);
+    const newItems = await getAllIndexedDBStorage();
+    setItems(newItems);
   };
 
   const cleanUpItems = async () => {
@@ -105,13 +117,13 @@ export default function LocalStorageViewer() {
       if (user) {
         await resetAllData();
       } else {
-        // For non-logged-in users, just clear local storage
-        const allKeys = Object.keys(localStorage);
-        allKeys.forEach((key) => {
+        // For non-logged-in users, just clear IndexedDB storage
+        const allKeys = await indexedDBStorage.getAllKeys();
+        for (const key of allKeys) {
           if (key.startsWith("todos")) {
-            localStorage.removeItem(key);
+            await indexedDBStorage.removeItem(key);
           }
-        });
+        }
       }
       // Reload to reflect the changes everywhere.
       window.location.reload();
@@ -150,7 +162,7 @@ export default function LocalStorageViewer() {
                 onClick={() => {
                   if (
                     window.confirm(
-                      "Are you sure you want to reset all todos localStorage items? This cannot be undone."
+                      "Are you sure you want to reset all todos storage items? This cannot be undone."
                     )
                   ) {
                     cleanUpItems();
