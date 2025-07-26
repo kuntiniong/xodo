@@ -1,97 +1,117 @@
-## Checklist
-- [x] fix timer state management issues (it stops when it auto hides in the hamburger menu)
-- [x] add dynamic metadata title for timer
-- [ ] fix layout for tablet hamburger menu
-- [x] add footer
-- [ ] fix button ui
-- [x] refactor data storage logic with localStorage instead of cookies
-- [x] **NEW ACCOUNT SETUP**: Ensure new accounts automatically get the six todo list templates
+# Comprehensive Guide
 
-## New Account Setup Workflow
+This document provides a complete overview of the Xodo todo application, from user-facing features to the underlying technical implementation.
 
-When a new user signs up for the first time, the application automatically provides them with six pre-configured todo list templates:
+## 1. User Guide
 
-### Default Templates Created
-1. **main** (todos1) - Green accent color
-2. **admin** (todos2) - Red accent color  
-3. **study** (todos3) - Yellow accent color
-4. **work** (todos4) - Blue accent color
-5. **project** (todos5) - Purple accent color
-6. **hobby** (todos6) - Orange accent color
+### 1.1. Getting Started
 
-### New User Flow
-1. User opens app (anonymous mode with 6 empty templates visible)
-2. User signs in with Google OAuth
-3. System detects new user and prompts for passphrase
-4. Upon passphrase entry:
-   - PGP key pair is generated and encrypted with passphrase
-   - Six default template lists are automatically created in Firestore
-   - Any existing localStorage data is synced to Firestore
-   - Real-time synchronization is established
-5. User can immediately start using all six todo lists
+- **Anonymous Usage**: When you first visit, you can immediately use the app without an account. All todo list data is stored locally in your browser's `localStorage`.
+- **Sign In**: To back up and sync your data across devices, sign in with a Google account.
 
-### Data Persistence
-- **Anonymous Mode**: Data stored only in localStorage
-- **Authenticated Mode**: Data encrypted and synced to Firestore
-- **Logout**: localStorage cleared, UI reverts to anonymous templates
-- **Re-login**: User data restored from Firestore to localStorage
+### 1.2. Authentication
 
-## Encryption Implementation
+- **Sign-In Process**: Click the profile area in the top-right, select "Sign in with Google," and follow the prompts. Your local data will be automatically synced to the cloud.
+- **Sign-Out Process**: Click your profile, select "Sign out." Your data remains in the cloud, and your device returns to anonymous mode.
 
-The application utilizes the `openpgp.js` library to perform client-side, end-to-end encryption. All cryptographic operations occur on the user's device, ensuring that unencrypted data is never transmitted to the server.
+### 1.3. Command-Line Interface
 
-### Key Management (`src/lib/openpgp.ts`)
+The application features a command-line interface for managing tasks.
 
-- **Key Pair Generation**: The `generateKeyPair` function is called to create a new public/private key pair.
-  - **Algorithm**: It uses Elliptic Curve Cryptography (ECC) with the `curve25519` curve, which offers a good balance of security and performance.
-  - **User Identity**: A default `userIDs` field is attached to the key.
-  - **Passphrase Protection**: The generated private key is immediately encrypted with the user-provided passphrase, preventing unauthorized access.
+| Command | Description | Example |
+|---|---|---|
+| `cd <list-name>` | Navigate to a specific list. | `cd work` |
+| `clear` | Scroll to the top of the page. | `clear` |
+| `add "<task>"` | Add a task to the current list. | `add "My new task"` |
+| `rm <task-id>` | Remove a task. | `rm 3` |
+| `rm <task-id> --done` | Mark a task as complete. | `rm 3 --done` |
 
-### Encryption Workflow (`src/services/firestoreService.ts`)
+## 2. Technical Implementation
 
-- **Client-Side Encryption**: Before a `TodoItem` is saved to Firestore, the `saveTodoListToFirestore` function in `firestoreService` is invoked.
-- **Data Serialization**: The `TodoItem` object is first serialized into a JSON string.
-- **Encryption Call**: This string is passed to the `encryptData` function in `openpgp.ts`.
-  - The `encryptData` function uses `openpgp.encrypt`, taking the user's public key (retrieved from `authStore`) to encrypt the message.
-- **Firestore Storage**: The resulting armored PGP message (a string) is what gets stored in the `encryptedData` field of the document in Firestore. The server and database only ever handle this encrypted string.
+### 2.1. Technology Stack
 
-### Decryption Workflow (`src/services/firestoreService.ts`)
+- **Frontend**: Next.js 15, React, TypeScript, Tailwind CSS
+- **State Management**: Zustand
+- **Backend**: Firebase Authentication, Cloud Firestore
+- **Encryption**: OpenPGP.js for end-to-end encryption
 
-- **Data Retrieval**: When fetching data, the encrypted PGP message is retrieved from Firestore.
-- **Client-Side Decryption**: The `loadAllTodoListsFromFirestore` (and other loader functions) call the `decryptData` function in `openpgp.ts`.
-- **Decryption Call**: `decryptData` uses `openpgp.decrypt` with the following parameters:
-  - The encrypted message.
-  - The user's armored private key (retrieved from `authStore`).
-  - The user's passphrase to unlock the private key.
-- **Data Deserialization**: The decrypted result is a JSON string, which is then parsed back into a `TodoItem` object for use in the application.
+### 2.2. Architecture
 
-This entire process ensures that the server is zero-knowledge, meaning it has no ability to view or access the user's private data.
+- **Local-First**: The application is designed to work offline. Todo list data is stored in `localStorage` and synced to Firestore in the background.
+- **State Management**: Zustand is used for global state management, with separate stores for authentication, sidebar, and the Pomodoro timer to prevent unnecessary re-renders.
+- **Data Flow**: User actions update the local state and `localStorage` immediately. A debounced synchronization process then updates Firestore.
 
-## Firebase Setup and Key Storage
-
-No special configuration is required for your Firebase project, as all encryption happens on the client. However, it is critical to have the correct **Firestore Security Rules** to protect user data.
-
-### Firestore Security Rules
-
-Your security rules should ensure that users can only read and write to their own documents. The application stores all user-specific data, including cryptographic keys, in a document at `users/{userId}`.
-
-Here is a recommended basic ruleset:
+### 2.3. Project Structure
 
 ```
+src/
+├── app/         # Main application logic
+├── components/  # Reusable UI components
+├── hooks/       # Custom React hooks
+├── lib/         # Core libraries (Firebase, OpenPGP, secureStorage)
+├── services/    # Firestore service layer
+└── stores/      # Zustand state management
+```
+
+## 3. Authentication and Data Sync
+
+### 3.1. End-to-End Encryption
+
+- **Passphrase**: On first login, you will be prompted to create a passphrase. This passphrase is used to encrypt your data *on your device* before it is sent to Firestore.
+- **Key Management**: Your passphrase is used to generate a public/private key pair. The public key and the encrypted private key are stored in Firestore. Your raw passphrase is never stored on any server.
+- **Secure Session Caching**: To avoid re-entering your passphrase on every page load, your passphrase and keys are cached in your browser's **localStorage** for the duration of your session. This cache is cleared when you log out. While the project includes a `secureStorage.ts` utility for IndexedDB, it is not currently used for caching sensitive session data.
+
+### 3.2. Data Synchronization
+
+- **Anonymous Users**: Data is stored in `localStorage` only.
+- **Authenticated Users**:
+    - On login, data is synced from Firestore to `localStorage`.
+    - Changes to `localStorage` are debounced and synced to Firestore.
+    - Real-time listeners update `localStorage` with changes from other devices.
+- **Conflict Resolution**: The last-write-wins. Firestore is the source of truth.
+
+### 3.3. Firestore Data Model
+
+- **Users**: A `users` collection stores user profiles, public keys, and encrypted private keys.
+- **Todo Lists**: Each user has a `todoLists` sub-collection where each document represents a todo list. The document ID is a unique `storageKey`.
+
+## 4. Firebase Setup
+
+### 4.1. Project Creation
+
+1.  Create a new project in the [Firebase Console](https://console.firebase.google.com/).
+2.  Register a new web app and copy the configuration.
+3.  Enable **Google Authentication**.
+4.  Create a **Firestore Database** in test mode for development.
+
+### 4.2. Security Rules
+
+Use the following Firestore security rules to restrict access to user data:
+
+```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow users to read and write only their own documents
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /todoLists/{listId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
   }
 }
 ```
 
-### Key Storage
+### 4.3. Environment Variables
 
-The public and (encrypted) private keys are stored in two locations:
+Create a `.env.local` file with your Firebase project configuration:
 
-1.  **Firestore**: Upon generation, the keys are saved to the user's document in the `users` collection (at `users/{userId}`). This allows the keys to persist between sessions and across devices.
-2.  **Client-Side State**: When a user logs in, the keys are loaded from Firestore into the Zustand `authStore`. They are held in memory for the duration of the session to perform cryptographic operations without needing to query the database repeatedly.
+```
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+NEXT_PUBLIC_FIREBASE_APP_ID=...
+```
