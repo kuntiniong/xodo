@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { firestoreService } from '@/services/firestoreService';
 import { indexedDBStorage } from '@/lib/indexedDBStorage';
+import { keyCache } from '@/lib/keyCache';
 
 // Hook to automatically sync IndexedDB storage changes to Firestore
 export const useFirestoreSync = () => {
@@ -32,9 +33,16 @@ export const useFirestoreSync = () => {
   // Get storage keys dynamically from Firestore
   useEffect(() => {
     const loadStorageKeys = async () => {
-      const { privateKey, passphrase } = useAuthStore.getState();
-      if (!user || !privateKey || !passphrase) {
+      const { privateKey } = useAuthStore.getState();
+      if (!user || !privateKey) {
         // Default storage keys for anonymous users or when keys are not ready
+        setStorageKeysToSync(defaultStorageKeys);
+        return;
+      }
+
+      // Check if we have cached keys as well
+      const hasCachedKey = await keyCache.hasKey(user.uid);
+      if (!hasCachedKey) {
         setStorageKeysToSync(defaultStorageKeys);
         return;
       }
@@ -76,9 +84,10 @@ export const useFirestoreSync = () => {
     const debouncedSync = (storageKey: string) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
-        const { privateKey, passphrase } = useAuthStore.getState();
-        if (!privateKey || !passphrase) {
-          console.warn(`Sync for ${storageKey} skipped: Private key or passphrase not available yet.`);
+        const { privateKey } = useAuthStore.getState();
+        const hasCachedKey = await keyCache.hasKey(user.uid);
+        if (!privateKey || !hasCachedKey) {
+          console.warn(`Sync for ${storageKey} skipped: Private key or cached key not available yet.`);
           return;
         }
         try {

@@ -15,6 +15,7 @@ import { encryptData, decryptData } from "@/lib/openpgp";
 import { useAuthStore } from "@/stores/authStore";
 import { useTodoStore } from "@/stores/todoStore";
 import { keyCache } from "@/lib/keyCache";
+import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
 export interface TodoItem {
   id: string;
@@ -342,6 +343,38 @@ class FirestoreService {
       }
     } catch (error) {
       console.error(`Error syncing localStorage change for ${storageKey}:`, error);
+    }
+  }
+
+  async syncIndexedDBStorageChange(user: User, storageKey: string): Promise<void> {
+    if (!user) return;
+
+    try {
+      // Get data from IndexedDB
+      const todosData = await indexedDBStorage.getItem(storageKey);
+      if (!todosData) return;
+
+      const todos = JSON.parse(todosData);
+      if (!Array.isArray(todos)) return;
+
+      // Find the list title by storage key
+      const todoListsMetadata = await this.getAllTodoListsWithMetadata(user);
+      const listEntry = Object.values(todoListsMetadata).find(list => list.storageKey === storageKey);
+      
+      if (listEntry) {
+        // Convert plain todos to TodoItems with proper structure
+        const todoItems: TodoItem[] = todos.map((todo, index) => ({
+          id: todo.id || `${Date.now()}_${index}`,
+          text: todo.text || '',
+          completed: todo.completed || false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }));
+
+        await this.saveTodoListToFirestore(user, listEntry.title, storageKey, todoItems);
+      }
+    } catch (error) {
+      console.error(`Error syncing IndexedDB change for ${storageKey}:`, error);
     }
   }
 
