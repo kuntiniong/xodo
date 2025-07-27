@@ -85,8 +85,18 @@ export async function generateDeterministicPrivateKey(userId: string, passphrase
 
 // Cache a decrypted AES key for session use
 export async function cacheDecryptedPrivateKey(userId: string, keyData: string, passphrase: string) {
-  const aesKey = await generateDeterministicAESKey(userId, passphrase);
-  await keyCache.setDecryptedKey(userId, aesKey);
+  // Generate both the CryptoKey and the raw key material
+  const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
+  const aesKey = await crypto.subtle.importKey(
+    'raw',
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+  
+  // Use the new method that stores both the CryptoKey and raw material
+  await keyCache.setDecryptedKeyWithMaterial(userId, aesKey, keyMaterial);
   return aesKey;
 }
 

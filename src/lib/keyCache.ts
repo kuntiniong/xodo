@@ -13,20 +13,29 @@ class KeyCache {
     // Store in memory for immediate access
     this.cache.set(userId, decryptedKey);
     
-    // For persistent storage, we'll regenerate the key material from the userId
-    // This avoids the extractable key issue entirely
+    // We can't persist CryptoKey objects directly due to extractable restrictions
+    // The crypto module will need to call setDecryptedKeyWithMaterial instead
+    console.log(`AES key stored in memory cache for user ${userId}`);
+  }
+
+  // New method to store raw key material alongside the CryptoKey for persistence
+  async setDecryptedKeyWithMaterial(userId: string, decryptedKey: CryptoKey, keyMaterial: Uint8Array): Promise<void> {
+    // Store in memory for immediate access
+    this.cache.set(userId, decryptedKey);
+    
+    // Persist raw key material to IndexedDB for page refresh survival
     try {
+      const keyArray = Array.from(keyMaterial);
       const keyData = JSON.stringify({
         userId,
+        keyArray: keyArray, // Store the raw key material
         timestamp: Date.now(),
-        algorithm: 'AES-GCM',
-        // Note: We don't store the actual key material, just metadata
-        // The key will be regenerated from userId + passphrase when needed
+        algorithm: 'AES-GCM'
       });
       await indexedDBStorage.setItem(`${this.KEY_PREFIX}${userId}`, keyData);
-      console.log(`AES key session info cached persistently for user ${userId}`);
+      console.log(`Decrypted AES key cached persistently for user ${userId}`);
     } catch (error) {
-      console.error('Failed to cache key session info to IndexedDB:', error);
+      console.error('Failed to cache decrypted key to IndexedDB:', error);
     }
   }
 
@@ -37,18 +46,31 @@ class KeyCache {
       return key || null;
     }
 
-    // If not in memory, we can't restore the key without the passphrase
-    // The user will need to re-authenticate to regenerate the key
+    // If not in memory, try to load from IndexedDB
     try {
       const keyData = await indexedDBStorage.getItem(`${this.KEY_PREFIX}${userId}`);
       if (keyData) {
         const parsed = JSON.parse(keyData);
-        if (parsed.algorithm === 'AES-GCM') {
-          console.log(`Key session exists for user ${userId} but key not in memory - re-authentication required`);
+        
+        // Import the AES key from stored array
+        if (parsed.algorithm === 'AES-GCM' && parsed.keyArray) {
+          const keyArray = new Uint8Array(parsed.keyArray);
+          const aesKey = await crypto.subtle.importKey(
+            'raw',
+            keyArray,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+          );
+          
+          // Store back in memory cache for faster access
+          this.cache.set(userId, aesKey);
+          console.log(`Restored decrypted AES key from persistent cache for user ${userId}`);
+          return aesKey;
         }
       }
     } catch (error) {
-      console.error('Failed to check key session in IndexedDB:', error);
+      console.error('Failed to restore decrypted key from IndexedDB:', error);
     }
 
     return null;
@@ -80,14 +102,19 @@ class KeyCache {
   }
 
   async hasKey(userId: string): Promise<boolean> {
-    // Check in-memory first (this is the actual key availability)
+    // Check in-memory first
     if (this.cache.has(userId)) {
       return true;
     }
 
-    // For session persistence, we only check if there's a session record
-    // but the actual key needs to be regenerated with passphrase
-    return false;
+    // Check IndexedDB
+    try {
+      const keyData = await indexedDBStorage.getItem(`${this.KEY_PREFIX}${userId}`);
+      return keyData !== null;
+    } catch (error) {
+      console.error('Failed to check for cached key in IndexedDB:', error);
+      return false;
+    }
   }
 
   // Synchronous version for compatibility with existing code
@@ -120,7 +147,14 @@ if (typeof window !== 'undefined') {
 export async function cacheDecryptedPrivateKey(userId: string, keyData: string, passphrase: string): Promise<void> {
   // This function is now a wrapper that generates an AES key from the passphrase
   // Import the AES encryption functions
-  const { generateDeterministicAESKey } = await import('./crypto');
-  const aesKey = await generateDeterministicAESKey(userId, passphrase);
-  await keyCache.setDecryptedKey(userId, aesKey);
+  const { generateDeterministicKeyMaterial } = await import('./crypto');
+  const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
+  const aesKey = await crypto.subtle.importKey(
+    'raw',
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+  await keyCache.setDecryptedKeyWithMaterial(userId, aesKey, keyMaterial);
 }

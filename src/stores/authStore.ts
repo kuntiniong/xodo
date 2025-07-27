@@ -298,7 +298,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userDoc = await getDoc(userDocRef);
       
       if (!userDoc.exists()) {
-        throw new Error('User document not found');
+        console.log('User document not found - user may need to create their encryption keys first');
+        set({ 
+          passphraseError: 'No encryption data found. Please create your passphrase first.',
+          isPassphraseRequired: true,
+          passphraseMode: 'create',
+          authFlowState: 'generating-keys'
+        });
+        return;
       }
 
       const userData = userDoc.data();
@@ -309,7 +316,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       // Validate that user has required data
       if (!storedHash || !storedPrivateKey) {
-        throw new Error('User data incomplete. Please contact support.');
+        console.log('User data incomplete - missing encryption keys or passphrase hash');
+        set({ 
+          passphraseError: 'Encryption data is incomplete. Please create your passphrase again.',
+          isPassphraseRequired: true,
+          passphraseMode: 'create',
+          authFlowState: 'generating-keys'
+        });
+        return;
       }
 
       // Validate passphrase against stored hash
@@ -555,10 +569,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           });
         }
       } else {
-        console.error('User document does not exist');
+        // User document doesn't exist - this is normal for new users who haven't set up encryption yet
+        console.log('New user detected - no user document exists yet, requiring passphrase creation');
         set({ 
-          passphraseError: 'User data not found. Please try signing in again.',
-          authFlowState: 'idle'
+          isPassphraseRequired: true,
+          passphraseMode: 'create',
+          authFlowState: 'generating-keys',
+          passphraseError: null // Clear any previous errors
         });
       }
     } catch (error) {
