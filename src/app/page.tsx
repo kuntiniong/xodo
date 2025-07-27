@@ -55,6 +55,7 @@ export default function Home() {
     isPassphraseRequired, 
     passphraseMode,
     passphraseError,
+    authFlowState,
     generateAndStoreKeys, 
     loadUserDataFromFirestore, 
     setPassphraseRequired,
@@ -77,34 +78,6 @@ export default function Home() {
     };
   }, [setTodoLists]);
 
-  // Set up real-time subscription when user is authenticated and has passphrase
-  useEffect(() => {
-    if (!user) return;
-
-    const { passphrase } = useAuthStore.getState();
-    if (!passphrase) return;
-
-    console.log('🔄 Setting up real-time Firestore subscription');
-    const unsubscribe = firestoreService.subscribeToUserTodoLists(user, async (lists) => {
-      // Update IndexedDB storage when Firestore data changes
-      for (const list of Object.values(lists)) {
-        const todosForStorage = list.todos.map(todo => ({
-          text: todo.text,
-          completed: todo.completed
-        }));
-        await indexedDBStorage.setItem(list.storageKey, JSON.stringify(todosForStorage));
-      }
-      
-      // Dispatch event to update UI components
-      window.dispatchEvent(new CustomEvent('todos-updated'));
-    });
-
-    return () => {
-      console.log('🔄 Cleaning up Firestore subscription');
-      unsubscribe();
-    };
-  }, [user]);
-
   const allTodos = Object.values(todoLists).map((list) => {
     const defaultList = defaultTodoLists.find((d) => d.title === list.title);
     return {
@@ -115,6 +88,12 @@ export default function Home() {
   });
 
   const handlePassphraseSubmit = async (passphrase: string) => {
+    // Prevent multiple simultaneous submissions
+    if (isLoading || authLoading) {
+      console.log('Passphrase submission already in progress');
+      return;
+    }
+    
     setIsLoading(true);
     clearPassphraseError();
     
@@ -132,10 +111,20 @@ export default function Home() {
     }
   };
 
-  if (isLoading) {
+  // Show loading state during authentication flow
+  if (authLoading || authFlowState === 'signing-in' || authFlowState === 'loading-keys') {
     return (
       <div className="grid lg:grid-cols-[1fr_auto] w-full max-w-screen-2xl mx-auto mt-16 gap-8 px-4 lg:px-8">
-        <div className="w-full h-96 animate-pulse bg-transparent rounded-lg"></div>
+        <div className="w-full h-96 animate-pulse bg-transparent rounded-lg flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-lg font-medium mb-2">
+              {authFlowState === 'signing-in' && 'Signing in...'}
+              {authFlowState === 'loading-keys' && 'Loading your data...'}
+              {authFlowState === 'generating-keys' && 'Setting up your account...'}
+            </div>
+            <div className="text-sm text-gray-500">Please wait</div>
+          </div>
+        </div>
         <Sidebar />
       </div>
     );
@@ -145,7 +134,12 @@ export default function Home() {
     <>
       <PassphraseDialog
         open={isPassphraseRequired}
-        onOpenChange={setPassphraseRequired}
+        onOpenChange={(open) => {
+          // Only allow closing if not in a critical auth flow state
+          if (!open && !isLoading && !['generating-keys', 'loading-keys', 'signing-in'].includes(authFlowState)) {
+            setPassphraseRequired(false);
+          }
+        }}
         onSubmit={handlePassphraseSubmit}
         mode={passphraseMode}
         error={passphraseError || undefined}

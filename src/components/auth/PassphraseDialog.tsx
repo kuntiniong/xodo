@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface PassphraseDialogProps {
   open: boolean;
@@ -32,13 +32,39 @@ export function PassphraseDialog({
   const [passphrase, setPassphrase] = useState("");
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [localError, setLocalError] = useState("");
+  const [submitAttempts, setSubmitAttempts] = useState(0);
+  const [lastSubmitTime, setLastSubmitTime] = useState(0);
+
+  // Clear form when dialog opens/closes or mode changes
+  useEffect(() => {
+    if (!open) {
+      setPassphrase("");
+      setConfirmPassphrase("");
+      setLocalError("");
+      setSubmitAttempts(0);
+      setLastSubmitTime(0);
+    }
+  }, [open, mode]);
 
   const handleSubmit = async () => {
     setLocalError("");
     
+    // Prevent spam submissions (1 second cooldown)
+    const now = Date.now();
+    if (now - lastSubmitTime < 1000) {
+      setLocalError("Please wait before trying again");
+      return;
+    }
+    
+    // Limit submission attempts to prevent abuse
+    if (submitAttempts >= 5) {
+      setLocalError("Too many attempts. Please refresh the page and try again.");
+      return;
+    }
+    
     if (mode === 'create') {
-      if (passphrase.length < 8) {
-        setLocalError("Passphrase must be at least 8 characters long");
+      if (passphrase.length < 6) {
+        setLocalError("Passphrase must be at least 6 characters long");
         return;
       }
       if (passphrase !== confirmPassphrase) {
@@ -53,12 +79,19 @@ export function PassphraseDialog({
     }
 
     try {
+      setSubmitAttempts(prev => prev + 1);
+      setLastSubmitTime(now);
+      
       await onSubmit(passphrase);
+      
+      // Reset form on successful submission
       setPassphrase("");
       setConfirmPassphrase("");
       setLocalError("");
+      setSubmitAttempts(0);
     } catch (error) {
       console.error("Passphrase submission error:", error);
+      // Error handling is done in the parent component
     }
   };
 

@@ -14,6 +14,7 @@ import { db } from "@/lib/firebase";
 import { encryptData, decryptData } from "@/lib/openpgp";
 import { useAuthStore } from "@/stores/authStore";
 import { useTodoStore } from "@/stores/todoStore";
+import { keyCache } from "@/lib/keyCache";
 
 export interface TodoItem {
   id: string;
@@ -45,11 +46,6 @@ class FirestoreService {
     todos: TodoItem[]
   ): Promise<void> {
     if (!user) return;
-    const { publicKey } = useAuthStore.getState();
-    if (!publicKey) {
-      console.error("Public key not available");
-      return;
-    }
 
     try {
       const encryptedTodos = await Promise.all(
@@ -58,7 +54,7 @@ class FirestoreService {
           .map(async (todo) => {
             const encryptedData = await encryptData(
               JSON.stringify(todo),
-              publicKey
+              user.uid
             );
             return {
               id: todo.id,
@@ -116,8 +112,7 @@ class FirestoreService {
             data.todos.map(async (todo: EncryptedTodoItem) => {
               const decryptedData = await decryptData(
                 todo.encryptedData,
-                privateKey,
-                passphrase
+                user.uid
               );
               return JSON.parse(decryptedData as string);
             })
@@ -166,10 +161,14 @@ class FirestoreService {
     let unsubscribe: (() => void) | null = null;
     
     // Check if private key is available, if not, wait for it
-    const checkAndStartSubscription = () => {
-      const { privateKey, passphrase } = useAuthStore.getState();
-      if (!privateKey || !passphrase) {
-        console.log("Private key or passphrase not available for subscription, waiting...");
+    const checkAndStartSubscription = async () => {
+      const { privateKey } = useAuthStore.getState();
+      
+      // Check if we have a cached decrypted key instead of requiring passphrase
+      const hasCachedKey = await keyCache.hasKey(user.uid);
+      
+      if (!privateKey || !hasCachedKey) {
+        console.log("Private key or cached key not available for subscription, waiting...");
         // Try again after a short delay
         timeoutId = setTimeout(() => checkAndStartSubscription(), 100);
         return;
@@ -181,8 +180,8 @@ class FirestoreService {
         timeoutId = null;
       }
       
-      // Start the actual subscription
-      unsubscribe = this.startSubscription(user, privateKey, passphrase, callback);
+      // Start the actual subscription using cached key
+      unsubscribe = this.startSubscription(user, privateKey, callback);
     };
     
     // Start checking for keys
@@ -202,7 +201,6 @@ class FirestoreService {
   private startSubscription(
     user: User,
     privateKey: string,
-    passphrase: string,
     callback?: (lists: Record<string, TodoList>) => void
   ): () => void {
 
@@ -220,10 +218,10 @@ class FirestoreService {
             const decryptedTodos = await Promise.all(
               data.todos.map(async (todo: EncryptedTodoItem) => {
                 try {
+                  // Use cached key decryption instead of passphrase
                   const decryptedData = await decryptData(
                     todo.encryptedData,
-                    privateKey,
-                    passphrase
+                    user.uid
                   );
                   return JSON.parse(decryptedData as string);
                 } catch (error) {
@@ -317,11 +315,6 @@ class FirestoreService {
 
   async syncLocalStorageChange(user: User, storageKey: string): Promise<void> {
     if (!user) return;
-    const { publicKey } = useAuthStore.getState();
-    if (!publicKey) {
-      console.error("Public key not available for sync");
-      return;
-    }
 
     try {
       // Get data from localStorage

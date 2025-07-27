@@ -15,8 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, googleProvider, db } from '@/lib/firebase';
 import { firestoreService } from '@/services/firestoreService';
-import { generatePrivateKey, generateDeterministicPrivateKey, decryptDataWithPassphrase, cacheDecryptedPrivateKey, validatePassphraseWithPrivateKey } from '@/lib/openpgp';
-import { secureKeyStorage } from '@/lib/secureStorage';
+import { generateDeterministicPrivateKey, cacheDecryptedPrivateKey } from '@/lib/openpgp';
 import { keyCache } from '@/lib/keyCache';
 import { indexedDBStorage } from '@/lib/indexedDBStorage';
 
@@ -30,6 +29,10 @@ export interface AuthState {
   passphraseError: string | null;
   authUnsubscribe?: (() => void) | null;
   firestoreUnsubscribe?: (() => void) | null;
+  // Authentication flow state management
+  authFlowState: 'idle' | 'signing-in' | 'loading-keys' | 'generating-keys' | 'ready';
+  keyOperationInProgress: boolean;
+  lastAuthAttempt: number;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   syncLocalDataToFirestore: () => Promise<void>;
@@ -53,48 +56,77 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   passphraseError: null,
   authUnsubscribe: null,
   firestoreUnsubscribe: null,
+  // Authentication flow state management
+  authFlowState: 'idle',
+  keyOperationInProgress: false,
+  lastAuthAttempt: 0,
 
   initialize: () => {
-    // Clean up any existing auth subscription
-    const { authUnsubscribe } = get();
-    if (authUnsubscribe) {
-      authUnsubscribe();
+    const state = get();
+    
+    // Prevent multiple initializations
+    if (state.authUnsubscribe) {
+      console.log('Auth already initialized, skipping duplicate initialization');
+      return;
     }
     
+    console.log('Initializing authentication state management...');
+    
     const newAuthUnsubscribe = onAuthStateChanged(auth, async (user) => {
-      const currentUser = get().user;
+      const currentState = get();
       
       // Skip if this is the same user (prevents redundant operations on page reload)
-      if (currentUser && user && currentUser.uid === user.uid) {
+      if (currentState.user && user && currentState.user.uid === user.uid && currentState.isInitialized) {
         console.log('Same user detected, skipping redundant authentication processing');
-        set({ isInitialized: true });
         return;
       }
       
-      set({ user, isInitialized: true });
+      // Set loading state during auth state change
+      set({ isLoading: true, authFlowState: 'loading-keys' });
       
-      if (user) {
-        // Check for a cached session first to avoid asking for the passphrase unnecessarily
-        const hasCachedSession = await get().checkCachedSession();
-        
-        if (hasCachedSession) {
-          console.log('Cached session restored successfully');
+      try {
+        if (user) {
+          console.log('User authenticated:', user.uid);
+          set({ user, isInitialized: true });
+          
+          // Check for cached session first
+          const hasCachedSession = await get().checkCachedSession();
+          
+          if (hasCachedSession) {
+            console.log('Cached session restored successfully');
+            set({ authFlowState: 'ready', isLoading: false });
+          } else {
+            console.log('No cached session found, loading keys from Firestore');
+            await get().loadKeys();
+            set({ authFlowState: 'ready', isLoading: false });
+          }
         } else {
-          // No cached session, so we need to load keys and potentially ask for a passphrase
-          console.log('No cached session found, proceeding to load keys from Firestore');
-          await get().loadKeys();
+          console.log('User signed out, resetting auth state');
+          // Clean up previous user's Firestore subscription
+          if (currentState.firestoreUnsubscribe) {
+            currentState.firestoreUnsubscribe();
+          }
+          
+          // Reset state to initial values
+          set({
+            user: null,
+            isLoading: false,
+            isInitialized: true,
+            privateKey: null,
+            isPassphraseRequired: false,
+            passphraseMode: 'unlock',
+            passphraseError: null,
+            firestoreUnsubscribe: null,
+            authFlowState: 'idle',
+            keyOperationInProgress: false,
+          });
         }
-      } else {
-        // User is logged out, reset the state to its initial values
-        set({
-          user: null,
+      } catch (error) {
+        console.error('Error during authentication state change:', error);
+        set({ 
           isLoading: false,
-          isInitialized: true,
-          privateKey: null,
-          isPassphraseRequired: false,
-          passphraseMode: 'unlock',
-          passphraseError: null,
-          firestoreUnsubscribe: null,
+          authFlowState: 'idle',
+          passphraseError: 'Authentication error occurred. Please try again.',
         });
       }
     });
@@ -104,7 +136,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signInWithGoogle: async () => {
-    set({ isLoading: true });
+    const currentState = get();
+    
+    // Prevent spam/multiple simultaneous sign-in attempts
+    const now = Date.now();
+    if (currentState.isLoading || currentState.authFlowState === 'signing-in') {
+      console.log('Sign-in already in progress, ignoring duplicate request');
+      return;
+    }
+    
+    // Throttle sign-in attempts to prevent spam (5 second cooldown)
+    if (now - currentState.lastAuthAttempt < 5000) {
+      console.log('Sign-in attempt too soon, please wait');
+      set({ passphraseError: 'Please wait before trying again' });
+      return;
+    }
+    
+    set({ 
+      isLoading: true, 
+      authFlowState: 'signing-in',
+      lastAuthAttempt: now,
+      passphraseError: null 
+    });
+    
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
@@ -124,23 +178,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           lastLogin: new Date(),
         });
         
-        // This is a new user, they need to generate keys.
-        // The UI will prompt for a passphrase.
-        set({ isPassphraseRequired: true, passphraseMode: 'create' });
-        
-        console.log('New user created, will need to generate keys and create default template');
+        console.log('New user created, requiring passphrase creation');
+        set({ 
+          user,
+          isPassphraseRequired: true, 
+          passphraseMode: 'create',
+          authFlowState: 'generating-keys'
+        });
       } else {
-        // Existing user - update last login and load keys
+        // Existing user - update last login and proceed with key loading
         await updateDoc(userDocRef, {
           lastLogin: new Date(),
         });
         
-        await get().loadKeys();
+        set({ user, authFlowState: 'loading-keys' });
+        
+        // Check for cached session first
+        const hasCachedSession = await get().checkCachedSession();
+        if (!hasCachedSession) {
+          await get().loadKeys();
+        }
       }
-      
-      set({ user });
     } catch (error) {
       console.error('Error signing in with Google:', error);
+      set({ 
+        passphraseError: 'Failed to sign in. Please try again.',
+        authFlowState: 'idle'
+      });
       throw error;
     } finally {
       set({ isLoading: false });
@@ -148,7 +212,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    set({ isLoading: true });
+    const currentState = get();
+    
+    // Prevent multiple simultaneous sign-out attempts
+    if (currentState.isLoading) {
+      console.log('Sign-out already in progress');
+      return;
+    }
+    
+    set({ isLoading: true, authFlowState: 'idle' });
+    
     try {
       const { firestoreUnsubscribe, user } = get();
       
@@ -158,13 +231,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.log('Cleared cached decrypted key for user');
       }
       
-      // Clean up Firestore subscription and cache
+      // Clean up Firestore subscription
       if (firestoreUnsubscribe) {
         firestoreUnsubscribe();
+        set({ firestoreUnsubscribe: null });
       }
-      
-      // Clear Firestore service cache
-      firestoreService.clearCache();
       
       // Sign out from Firebase, which will trigger onAuthStateChanged
       await firebaseSignOut(auth);
@@ -182,6 +253,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('🔄 User signed out and all data cleared');
     } catch (error) {
       console.error('Error signing out:', error);
+      set({ passphraseError: 'Failed to sign out. Please try again.' });
       throw error;
     } finally {
       set({ isLoading: false });
@@ -201,11 +273,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loadUserDataFromFirestore: async (passphrase: string) => {
-    const { user } = get();
-    if (!user) return;
+    const { user, keyOperationInProgress } = get();
+    if (!user) {
+      console.error('No user available for loading data');
+      return;
+    }
+    
+    // Prevent concurrent key operations
+    if (keyOperationInProgress) {
+      console.log('Key operation already in progress, skipping duplicate request');
+      return;
+    }
 
     try {
-      set({ passphraseError: null, isLoading: true });
+      set({ 
+        passphraseError: null, 
+        isLoading: true,
+        keyOperationInProgress: true,
+        authFlowState: 'loading-keys'
+      });
       
       // Get user data from Firebase
       const userDocRef = doc(db, 'users', user.uid);
@@ -246,7 +332,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('Decrypted private key cached for session');
 
       // Load and decrypt user data using the cached key approach
-      const todoLists = await firestoreService.loadAllTodoListsFromFirestore(user);
+      const todoLists = await firestoreService.loadAllTodoListsFromFirestore(user, passphrase);
       
       // Populate IndexedDB with the loaded data
       for (const list of Object.values(todoLists)) {
@@ -268,7 +354,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ 
         isPassphraseRequired: false, 
         passphraseError: null,
-        isLoading: false
+        isLoading: false,
+        authFlowState: 'ready',
+        privateKey: storedPrivateKey // Set the private key in state for subscription
       });
       
       // Start Firestore subscription after successful authentication ONLY if not already subscribed
@@ -282,20 +370,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch (error) {
       console.error('Error loading user data from Firestore:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       set({ 
-        passphraseError: 'Failed to decrypt your data. Please check your passphrase and try again.',
-        isLoading: false
+        passphraseError: errorMessage.includes('Invalid passphrase') 
+          ? 'Invalid passphrase. Please try again.'
+          : 'Failed to decrypt your data. Please check your passphrase and try again.',
+        isLoading: false,
+        authFlowState: 'idle'
       });
       throw error;
+    } finally {
+      set({ keyOperationInProgress: false });
     }
   },
 
   generateAndStoreKeys: async (passphrase: string) => {
-    const { user } = get();
-    if (!user) return;
+    const { user, keyOperationInProgress } = get();
+    if (!user) {
+      console.error('No user available for key generation');
+      return;
+    }
+    
+    // Prevent concurrent key operations
+    if (keyOperationInProgress) {
+      console.log('Key operation already in progress, skipping duplicate request');
+      return;
+    }
 
     try {
-      set({ passphraseError: null });
+      set({ 
+        passphraseError: null,
+        keyOperationInProgress: true,
+        isLoading: true,
+        authFlowState: 'generating-keys'
+      });
       
       // Generate private key using deterministic method based on user ID
       const privateKey = await generateDeterministicPrivateKey(user.uid, passphrase);
@@ -320,15 +428,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       console.log('Successfully stored private key and passphrase hash to Firebase');
       
-      // Update session state
-      set({ 
-        isPassphraseRequired: false, 
-        passphraseError: null
-      });
-
       // Cache the decrypted private key for the session
       await cacheDecryptedPrivateKey(user.uid, privateKey, passphrase);
       console.log('Decrypted private key cached for session');
+      
+      // Update session state
+      set({ 
+        isPassphraseRequired: false, 
+        passphraseError: null,
+        authFlowState: 'ready',
+        privateKey: privateKey // Set the private key in state for subscription
+      });
       
       // Check if this is a new user (no todo lists exist yet)
       const todoListsMetadata = await firestoreService.getAllTodoListsWithMetadata(user);
@@ -348,14 +458,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch (error) {
       console.error('Error generating and storing keys:', error);
-      set({ passphraseError: 'Failed to generate encryption keys. Please try again.' });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      set({ 
+        passphraseError: 'Failed to generate encryption keys. Please try again.',
+        authFlowState: 'idle'
+      });
       throw error;
+    } finally {
+      set({ 
+        isLoading: false,
+        keyOperationInProgress: false 
+      });
     }
   },
 
   createDefaultTemplateForNewUser: async () => {
     const { user } = get();
-    if (!user) return;
+    if (!user) {
+      console.error('No user available for creating default template');
+      return;
+    }
 
     const defaultLists = [
       { title: 'main', storageKey: 'todos1' },
@@ -367,58 +489,86 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     ];
 
     try {
-      // Prepare lists with existing localStorage data
-      const listsWithData = defaultLists.map(listConfig => {
+      // Create all lists sequentially to avoid race conditions
+      for (const listConfig of defaultLists) {
         const existingTodos = localStorage.getItem(listConfig.storageKey);
         const todos = existingTodos ? JSON.parse(existingTodos) : [];
         
-        return {
-          ...listConfig,
-          todos: Array.isArray(todos) ? todos.map((todo, index) => ({
-            id: todo.id || `${Date.now()}_${index}`,
-            text: todo.text || '',
-            completed: todo.completed || false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          })) : []
-        };
-      });
+        const todoItems = Array.isArray(todos) ? todos.map((todo, index) => ({
+          id: todo.id || `${Date.now()}_${index}`,
+          text: todo.text || '',
+          completed: todo.completed || false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })).filter(todo => todo.text.trim() !== '') : [];
 
-      // Create all lists in batch to minimize Firestore subscription triggers
-      await firestoreService.createMultipleTodoListsBatch(user, listsWithData);
+        // Use the correct createTodoList method
+        await firestoreService.createTodoList(user, listConfig.title, listConfig.storageKey, todoItems);
+        
+        // Small delay to prevent overwhelming Firestore
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       
       console.log('✅ Default template lists created for new user');
     } catch (error) {
       console.error('❌ Error creating default template for new user:', error);
+      // Don't throw the error as this is not critical for the auth flow
     }
   },
 
   loadKeys: async () => {
-    const { user } = get();
-    if (!user) return;
+    const { user, keyOperationInProgress } = get();
+    if (!user) {
+      console.error('No user available for loading keys');
+      return;
+    }
+    
+    // Prevent concurrent key operations
+    if (keyOperationInProgress) {
+      console.log('Key operation already in progress, skipping duplicate request');
+      return;
+    }
 
     try {
+      set({ keyOperationInProgress: true });
+      
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
+      
       if (userDoc.exists()) {
         const data = userDoc.data();
         if (data.encryptedPrivateKey && data.hasEncryptionKeys && data.passphraseHash) {
           // User has keys and passphrase hash, they need to unlock with passphrase
+          console.log('User has encryption keys, requiring passphrase to unlock');
           set({ 
             isPassphraseRequired: true,
-            passphraseMode: 'unlock'
+            passphraseMode: 'unlock',
+            authFlowState: 'loading-keys'
           });
         } else {
           // User needs to generate keys for the first time
+          console.log('User missing encryption keys, requiring passphrase creation');
           set({ 
             isPassphraseRequired: true,
-            passphraseMode: 'create'
+            passphraseMode: 'create',
+            authFlowState: 'generating-keys'
           });
         }
+      } else {
+        console.error('User document does not exist');
+        set({ 
+          passphraseError: 'User data not found. Please try signing in again.',
+          authFlowState: 'idle'
+        });
       }
     } catch (error) {
       console.error('Error loading keys:', error);
-      set({ passphraseError: 'Failed to load user data. Please try again.' });
+      set({ 
+        passphraseError: 'Failed to load user data. Please try again.',
+        authFlowState: 'idle'
+      });
+    } finally {
+      set({ keyOperationInProgress: false });
     }
   },
 
@@ -432,7 +582,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkCachedSession: async () => {
     const { user, firestoreUnsubscribe } = get();
-    if (!user) return false;
+    if (!user) {
+      console.log('No user available for checking cached session');
+      return false;
+    }
 
     try {
       // Check if we have a cached decrypted private key for this user (async check)
@@ -440,8 +593,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (hasKey) {
         console.log('Found cached session, decrypted private key available...');
         
+        // Get the encrypted private key from Firestore to set in state
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        let privateKey = null;
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          privateKey = userData.encryptedPrivateKey;
+        }
+        
         set({ 
-          isPassphraseRequired: false 
+          isPassphraseRequired: false,
+          authFlowState: 'ready',
+          privateKey: privateKey // Set the private key for subscription
         });
 
         // Start Firestore subscription only if not already subscribed
@@ -455,14 +620,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         return true;
       }
+      
+      console.log('No cached session found');
       return false;
     } catch (error) {
       console.error('Error checking cached session:', error);
+      set({ authFlowState: 'idle' });
       return false;
     }
   }
 }));
 
-// Initialize auth state listener when the store is first used
-useAuthStore.getState().initialize();
+// Initialize auth state listener when the store is first used, with proper cleanup
+let isStoreInitialized = false;
+
+export const initializeAuthStore = () => {
+  if (!isStoreInitialized) {
+    console.log('Initializing auth store for the first time...');
+    useAuthStore.getState().initialize();
+    isStoreInitialized = true;
+  }
+};
+
+// Auto-initialize on import, but allow manual control
+if (typeof window !== 'undefined') {
+  // Initialize after a short delay to ensure DOM is ready
+  setTimeout(() => {
+    initializeAuthStore();
+  }, 100);
+  
+  // Clean up auth listeners on page unload
+  window.addEventListener('beforeunload', () => {
+    const { authUnsubscribe, firestoreUnsubscribe } = useAuthStore.getState();
+    if (authUnsubscribe) {
+      console.log('Cleaning up auth subscription on page unload');
+      authUnsubscribe();
+    }
+    if (firestoreUnsubscribe) {
+      console.log('Cleaning up Firestore subscription on page unload');
+      firestoreUnsubscribe();
+    }
+  });
+}
 
