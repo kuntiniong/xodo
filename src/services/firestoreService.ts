@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 import { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { encryptData, decryptData } from "@/lib/openpgp";
+import { encryptData, decryptData } from "@/lib/crypto";
 import { useAuthStore } from "@/stores/authStore";
 import { useTodoStore } from "@/stores/todoStore";
 import { keyCache } from "@/lib/keyCache";

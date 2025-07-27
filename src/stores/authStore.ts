@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, googleProvider, db } from '@/lib/firebase';
 import { firestoreService } from '@/services/firestoreService';
-import { generateDeterministicPrivateKey, cacheDecryptedPrivateKey } from '@/lib/openpgp';
+import { generateDeterministicPrivateKey, cacheDecryptedPrivateKey } from '@/lib/crypto';
 import { keyCache } from '@/lib/keyCache';
 import { indexedDBStorage } from '@/lib/indexedDBStorage';
 

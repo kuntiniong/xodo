@@ -1,55 +1,54 @@
-// Persistent cache for decrypted OpenPGP private keys using IndexedDB
-// This avoids having to decrypt the private key on every operation
+// Persistent cache for decrypted AES keys using IndexedDB
+// This avoids having to decrypt the key on every operation
 // and eliminates the need to store passphrases
 // Keys persist across page refreshes and browser sessions
 
 import { indexedDBStorage } from './indexedDBStorage';
-import * as openpgp from 'openpgp';
 
 class KeyCache {
-  private cache = new Map<string, any>(); // In-memory fallback for immediate access
+  private cache = new Map<string, CryptoKey>(); // In-memory fallback for immediate access
   private readonly KEY_PREFIX = 'decrypted_key_';
 
-  async setDecryptedKey(userId: string, decryptedPrivateKey: any): Promise<void> {
+  async setDecryptedKey(userId: string, decryptedKey: CryptoKey): Promise<void> {
     // Store in memory for immediate access
-    this.cache.set(userId, decryptedPrivateKey);
+    this.cache.set(userId, decryptedKey);
     
-    // Persist to IndexedDB for page refresh survival
+    // For persistent storage, we'll regenerate the key material from the userId
+    // This avoids the extractable key issue entirely
     try {
       const keyData = JSON.stringify({
         userId,
-        decryptedPrivateKey: decryptedPrivateKey.armor(), // Serialize the OpenPGP key
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        algorithm: 'AES-GCM',
+        // Note: We don't store the actual key material, just metadata
+        // The key will be regenerated from userId + passphrase when needed
       });
       await indexedDBStorage.setItem(`${this.KEY_PREFIX}${userId}`, keyData);
-      console.log(`Decrypted key cached persistently for user ${userId}`);
+      console.log(`AES key session info cached persistently for user ${userId}`);
     } catch (error) {
-      console.error('Failed to cache decrypted key to IndexedDB:', error);
+      console.error('Failed to cache key session info to IndexedDB:', error);
     }
   }
 
-  async getDecryptedKey(userId: string): Promise<any | null> {
+  async getDecryptedKey(userId: string): Promise<CryptoKey | null> {
     // First check in-memory cache
     if (this.cache.has(userId)) {
-      return this.cache.get(userId);
+      const key = this.cache.get(userId);
+      return key || null;
     }
 
-    // If not in memory, try to load from IndexedDB
+    // If not in memory, we can't restore the key without the passphrase
+    // The user will need to re-authenticate to regenerate the key
     try {
       const keyData = await indexedDBStorage.getItem(`${this.KEY_PREFIX}${userId}`);
       if (keyData) {
         const parsed = JSON.parse(keyData);
-        
-        // Deserialize the OpenPGP key using the correct function
-        const privateKey = await openpgp.readPrivateKey({ armoredKey: parsed.decryptedPrivateKey });
-        
-        // Store back in memory cache for faster access
-        this.cache.set(userId, privateKey);
-        console.log(`Restored decrypted key from persistent cache for user ${userId}`);
-        return privateKey;
+        if (parsed.algorithm === 'AES-GCM') {
+          console.log(`Key session exists for user ${userId} but key not in memory - re-authentication required`);
+        }
       }
     } catch (error) {
-      console.error('Failed to restore decrypted key from IndexedDB:', error);
+      console.error('Failed to check key session in IndexedDB:', error);
     }
 
     return null;
@@ -81,19 +80,14 @@ class KeyCache {
   }
 
   async hasKey(userId: string): Promise<boolean> {
-    // Check in-memory first
+    // Check in-memory first (this is the actual key availability)
     if (this.cache.has(userId)) {
       return true;
     }
 
-    // Check IndexedDB
-    try {
-      const keyData = await indexedDBStorage.getItem(`${this.KEY_PREFIX}${userId}`);
-      return keyData !== null;
-    } catch (error) {
-      console.error('Failed to check for cached key in IndexedDB:', error);
-      return false;
-    }
+    // For session persistence, we only check if there's a session record
+    // but the actual key needs to be regenerated with passphrase
+    return false;
   }
 
   // Synchronous version for compatibility with existing code
@@ -123,11 +117,10 @@ if (typeof window !== 'undefined') {
 }
 
 // Export helper functions for backward compatibility
-export async function cacheDecryptedPrivateKey(userId: string, encryptedPrivateKey: string, passphrase: string): Promise<void> {
-  const privateKey = await openpgp.readPrivateKey({ armoredKey: encryptedPrivateKey });
-  const decryptedKey = await openpgp.decryptKey({
-    privateKey,
-    passphrase
-  });
-  await keyCache.setDecryptedKey(userId, decryptedKey);
+export async function cacheDecryptedPrivateKey(userId: string, keyData: string, passphrase: string): Promise<void> {
+  // This function is now a wrapper that generates an AES key from the passphrase
+  // Import the AES encryption functions
+  const { generateDeterministicAESKey } = await import('./crypto');
+  const aesKey = await generateDeterministicAESKey(userId, passphrase);
+  await keyCache.setDecryptedKey(userId, aesKey);
 }
