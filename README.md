@@ -3,17 +3,17 @@ An End-to-End Encrypted (E2EE), keyboard-centric productivity web app with Unix-
 ## Features
 ### 1. Keyboard-Centric
 - Use Xodo with familiar Unix-style commands if you're a developer or keyboard enthusiast.
-<img src="img/unix.gif">
+<img src="https://i.imgur.com/T643jhL.gif">
 
 > *See the full [list of commands](https://www.ktiong.com/blog/xodo-doc) supported.*
 
 ### 2. Privacy-Preserving
 - Only your Google account name and email address are ever known to us. All your todo data is encrypted locally before being securely synced to the cloud — ensuring only YOU can read your tasks.
-<img src="img/encrypt.gif">
+<img src="https://i.imgur.com/WxHxw9s.gif">
 
 ### 3. Ultra Responsive
 - Enjoy a fast, fluid UI experience with the Masonry library on ANY devices.
-<img src="img/responsive.gif">
+<img src="https://i.imgur.com/1MNIYfS.gif">
 
 ## Table of Contents
 - [Workflow](#workflow)
