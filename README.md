@@ -1,7 +1,9 @@
 # Xodo: A Privacy & Keyboard-first Todo App
+<img src="img/todo.png">
 An End-to-End Encrypted (E2EE), keyboard-centric productivity web app with Unix-like commands
+
 ## Features
-> the demo GIFs take *quite* a while to load, you can check out other sections first or directly try it yourself on [xodo.ktiong.com](https://xodo.ktiong.com) ;\)
+> the demo GIFs take *quite* a while to load *(~30s)*, you can check out other sections first or directly try it yourself on [xodo.ktiong.com](https://xodo.ktiong.com) ;\)
 
 ### 1. Keyboard-Centric
 - Use Xodo with familiar Unix-style commands if you're a developer or keyboard enthusiast.
