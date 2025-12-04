@@ -21,7 +21,7 @@ const footerSections: FooterSection[] = [
   {
     title: "FAQ",
     links: [
-      { label: "List of commands", href: "https://ktiong.com/blog/xodo-doc" },
+      { label: "List of commands", href: "https://ktiong.com/xodo-doc" },
       { label: "WHY should you use Xodo? (WIP)", href: "#" },
     ],
   },
@@ -36,7 +36,7 @@ const footerSections: FooterSection[] = [
   {
     title: "TECHNICAL ZONE",
     links: [
-      { label: "Source Code (WIP)", href: "https://github.com/kuntiniong/todo-list" },
+      { label: "Source Code (WIP)", href: "https://github.com/kuntiniong/xodo" },
       { label: "\"How I made Xodo?\" - Blog (WIP)", href: "#" },
     ],
   },
