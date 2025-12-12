@@ -19,7 +19,7 @@
     "gsap": "^3.13.0",
     "lucide-react": "^0.525.0",
     "masonry-layout": "^4.2.2",
-    "next": "15.3.6",
+    "next": "15.3.8",
     "openpgp": "^6.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
