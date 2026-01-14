@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import ShadowIn from "@/components/animations/ShadowIn";
 import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
 interface Todo {
@@ -88,8 +87,7 @@ export default function TodoBarChart() {
   const max = Math.max(...counts, 1);
 
   return (
-    <ShadowIn className="w-full" shadowColor="white">
-      <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
+    <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
           <h2 className="title text-5xl text-left my-2">visualization</h2>
           <div className="flex flex-col gap-3 w-full">
@@ -114,6 +112,5 @@ export default function TodoBarChart() {
           </div>
         </main>
       </div>
-    </ShadowIn>
   );
 }

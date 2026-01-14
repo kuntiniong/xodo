@@ -58,7 +58,6 @@
 
   .nav-link:hover {
     @apply text-link-hover;
-    transform: translateX(3px);
   }
 
   .link {

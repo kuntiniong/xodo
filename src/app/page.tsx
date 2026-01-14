@@ -114,7 +114,8 @@ export default function Home() {
   // Show loading state during authentication flow
   if (authLoading || authFlowState === 'signing-in' || authFlowState === 'loading-keys') {
     return (
-      <div className="grid lg:grid-cols-[1fr_auto] w-full max-w-screen-2xl mx-auto mt-16 gap-8 px-4 lg:px-8">
+      <div className="grid lg:grid-cols-[auto_1fr] w-full max-w-screen-2xl mx-auto mt-16 gap-8 px-4 lg:px-8">
+        <Sidebar />
         <div className="w-full h-96 animate-pulse bg-transparent rounded-lg flex items-center justify-center">
           <div className="text-center">
             <div className="text-lg font-medium mb-2">
@@ -125,7 +126,6 @@ export default function Home() {
             <div className="text-sm text-gray-500">Please wait</div>
           </div>
         </div>
-        <Sidebar />
       </div>
     );
   }
@@ -145,9 +145,9 @@ export default function Home() {
         error={passphraseError || undefined}
         isLoading={isLoading}
       />
-      <div className="grid lg:grid-cols-[1fr_auto] w-full max-w-screen-2xl mx-auto mt-16 gap-8 px-4 lg:px-8">
-        <ClientOnlyTodoGrid allTodos={user ? allTodos : defaultTodoLists} />
+      <div className="grid lg:grid-cols-[auto_1fr] w-full max-w-screen-2xl mx-auto mt-16 gap-8 px-4 lg:px-8">
         <Sidebar />
+        <ClientOnlyTodoGrid allTodos={user ? allTodos : defaultTodoLists} />
       </div>
     </>
   );

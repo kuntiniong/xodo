@@ -1,6 +1,5 @@
 import React, { useEffect } from "react";
 import { motion } from "framer-motion";
-import ShadowIn from "@/components/animations/ShadowIn";
 import { useTimerStore, useTimerDisplayStore, useTimerControlStore } from "@/stores/timerStore";
 
 function formatTime(seconds: number) {
@@ -67,7 +66,6 @@ const PomodoroTimer: React.FC = () => {
   return (
     <>
       <DocumentTitleUpdater />
-      <ShadowIn className="w-full" shadowColor="white">
       <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
           <h1 className="title text-5xl text-left my-1">
@@ -157,7 +155,6 @@ const PomodoroTimer: React.FC = () => {
           </div>
         </main>
       </div>
-    </ShadowIn>
     </>
   );
 };

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import ShadowIn from "@/components/animations/ShadowIn";
 import { useResetAllData } from "@/hooks/useFirestoreSync";
 import { useAuthStore } from "@/stores/authStore";
 import { firestoreService } from "@/services/firestoreService";
@@ -134,8 +133,7 @@ export default function StorageViewer() {
   };
 
   return (
-    <ShadowIn className="w-full" shadowColor="white">
-      <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
+    <div className="card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto">
         <main className="flex flex-col gap-6 w-full max-w-md">
           <h2 className="text-5xl title text-left my-2">im/export</h2>
 
@@ -235,6 +233,5 @@ export default function StorageViewer() {
           )}
         </main>
       </div>
-    </ShadowIn>
   );
 }

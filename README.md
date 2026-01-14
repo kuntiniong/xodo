@@ -19,8 +19,8 @@ An End-to-End Encrypted (E2EE), keyboard-centric productivity web app with Unix-
 - Enjoy a fast, fluid UI experience with the Masonry library on ANY devices.
 <img src="img/responsive.gif">
 
-## Workflow
-<img src="img/flow-chart.png">
+<!-- ## Workflow
+<img src="img/flow-chart.png"> -->
 
 ## Tech Stack
 ### Frontend
