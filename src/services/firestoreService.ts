@@ -14,7 +14,6 @@ import { db } from "@/lib/firebase";
 import { encryptData, decryptData } from "@/lib/crypto";
 import { useAuthStore } from "@/stores/authStore";
 import { useTodoStore } from "@/stores/todoStore";
-import { keyCache } from "@/lib/keyCache";
 import { indexedDBStorage } from "@/lib/indexedDBStorage";
 
 export interface TodoItem {
@@ -44,7 +43,8 @@ class FirestoreService {
     user: User,
     listTitle: string,
     storageKey: string,
-    todos: TodoItem[]
+    todos: TodoItem[],
+    passphrase: string
   ): Promise<void> {
     if (!user) return;
 
@@ -55,7 +55,8 @@ class FirestoreService {
           .map(async (todo) => {
             const encryptedData = await encryptData(
               JSON.stringify(todo),
-              user.uid
+              user.uid,
+              passphrase
             );
             return {
               id: todo.id,
@@ -88,16 +89,62 @@ class FirestoreService {
     }
   }
 
+  async syncTodoListToFirestore(
+    user: User,
+    listTitle: string,
+    todoList: TodoList
+  ): Promise<void> {
+    if (!user) return;
+
+    try {
+      const encryptedTodos = await Promise.all(
+        todoList.todos
+          .filter((todo) => todo && todo.id)
+          .map(async (todo) => {
+            // Use cached key - encryption will fall back to passphrase derivation if needed
+            const encryptedData = await encryptData(
+              JSON.stringify(todo),
+              user.uid
+            );
+            return {
+              id: todo.id,
+              encryptedData,
+            };
+          })
+      );
+
+      const listDocRef = doc(db, "users", user.uid, "todoLists", todoList.storageKey);
+      await setDoc(
+        listDocRef,
+        {
+          title: listTitle,
+          storageKey: todoList.storageKey,
+          todos: encryptedTodos,
+          lastModified: Timestamp.now(),
+        },
+        { merge: true }
+      );
+
+      console.log(
+        `Todo list '${listTitle}' synced to Firestore`
+      );
+    } catch (error) {
+      console.error(
+        `Error syncing todo list '${listTitle}' to Firestore:`,
+        error
+      );
+      throw error;
+    }
+  }
+
   async loadAllTodoListsFromFirestore(
     user: User,
     passphrase: string
   ): Promise<Record<string, TodoList>> {
     if (!user) return {};
-    const { privateKey } = useAuthStore.getState();
-    if (!privateKey) {
-      console.error("Private key not available");
-      return {};
-    }
+    
+    // Key will be derived on-demand when needed
+    console.log('Loading todo lists from Firestore');
 
     try {
       const todoListsRef = collection(db, "users", user.uid, "todoLists");
@@ -113,7 +160,8 @@ class FirestoreService {
             data.todos.map(async (todo: EncryptedTodoItem) => {
               const decryptedData = await decryptData(
                 todo.encryptedData,
-                user.uid
+                user.uid,
+                passphrase
               );
               return JSON.parse(decryptedData as string);
             })
@@ -153,132 +201,26 @@ class FirestoreService {
   }
 
   subscribeToUserTodoLists(
-    user: User,
-    callback?: (lists: Record<string, TodoList>) => void
+    _user: User,
+    _callback?: (lists: Record<string, TodoList>) => void
   ): () => void {
-    if (!user) return () => {};
-    
-    let timeoutId: NodeJS.Timeout | null = null;
-    let unsubscribe: (() => void) | null = null;
-    
-    // Check if private key is available, if not, wait for it
-    const checkAndStartSubscription = async () => {
-      const { privateKey } = useAuthStore.getState();
-      
-      // Check if we have a cached decrypted key instead of requiring passphrase
-      const hasCachedKey = await keyCache.hasKey(user.uid);
-      
-      if (!privateKey || !hasCachedKey) {
-        console.log("Private key or cached key not available for subscription, waiting...");
-        // Try again after a short delay
-        timeoutId = setTimeout(() => checkAndStartSubscription(), 100);
-        return;
-      }
-      
-      // Clear any pending timeout
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      
-      // Start the actual subscription using cached key
-      unsubscribe = this.startSubscription(user, privateKey, callback);
-    };
-    
-    // Start checking for keys
-    checkAndStartSubscription();
-    
-    // Return cleanup function
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }
-
-  private startSubscription(
-    user: User,
-    privateKey: string,
-    callback?: (lists: Record<string, TodoList>) => void
-  ): () => void {
-
-    const todoListsRef = collection(db, "users", user.uid, "todoLists");
-
-    const unsubscribe = onSnapshot(todoListsRef, async (querySnapshot) => {
-      const lists: Record<string, TodoList> = {};
-      
-      try {
-        for (const doc of querySnapshot.docs) {
-          const data = doc.data();
-          const storageKey = data.storageKey;
-          
-          if (data.todos && Array.isArray(data.todos)) {
-            const decryptedTodos = await Promise.all(
-              data.todos.map(async (todo: EncryptedTodoItem) => {
-                try {
-                  // Use cached key decryption instead of passphrase
-                  const decryptedData = await decryptData(
-                    todo.encryptedData,
-                    user.uid
-                  );
-                  return JSON.parse(decryptedData as string);
-                } catch (error) {
-                  console.error(`Error decrypting todo ${todo.id}:`, error);
-                  return null;
-                }
-              })
-            );
-            
-            lists[data.title] = {
-              title: data.title,
-              storageKey: storageKey,
-              todos: decryptedTodos.filter(todo => todo !== null),
-              lastModified: data.lastModified?.toDate() || new Date(),
-            };
-          } else {
-            // Handle lists without todos (metadata only)
-            lists[data.title] = {
-              title: data.title,
-              storageKey: storageKey,
-              todos: [],
-              lastModified: data.lastModified?.toDate() || new Date(),
-            };
-          }
-        }
-        
-        // Update todoStore
-        useTodoStore.getState().setTodoLists(lists);
-        
-        // Call optional callback
-        if (callback) {
-          callback(lists);
-        }
-        
-      } catch (error) {
-        console.error("Error processing Firestore subscription update:", error);
-      }
-    });
-
-    return unsubscribe;
+    // Listener disabled (write-only sync)
+    return () => {};
   }
 
   async createTodoList(
     user: User,
     title: string,
     storageKey: string,
-    todos: TodoItem[] = []
+    todos: TodoItem[] = [],
+    passphrase: string = ''
   ): Promise<void> {
     if (!user) return;
 
     try {
-      await this.saveTodoListToFirestore(user, title, storageKey, todos);
+      await this.saveTodoListToFirestore(user, title, storageKey, todos, passphrase);
       localStorage.setItem(storageKey, JSON.stringify(todos));
-      console.log(
-        `New todo list '${title}' created with storage key '${storageKey}'`
-      );
+      console.log(`New todo list '${title}' created with storage key '${storageKey}'`);
     } catch (error) {
       console.error(`Error creating todo list '${title}':`, error);
       throw error;
@@ -314,7 +256,7 @@ class FirestoreService {
     }
   }
 
-  async syncLocalStorageChange(user: User, storageKey: string): Promise<void> {
+  async syncLocalStorageChange(user: User, storageKey: string, passphrase: string = ''): Promise<void> {
     if (!user) return;
 
     try {
@@ -339,14 +281,14 @@ class FirestoreService {
           updatedAt: new Date(),
         }));
 
-        await this.saveTodoListToFirestore(user, listEntry.title, storageKey, todoItems);
+        await this.saveTodoListToFirestore(user, listEntry.title, storageKey, todoItems, passphrase);
       }
     } catch (error) {
       console.error(`Error syncing localStorage change for ${storageKey}:`, error);
     }
   }
 
-  async syncIndexedDBStorageChange(user: User, storageKey: string): Promise<void> {
+  async syncIndexedDBStorageChange(user: User, storageKey: string, passphrase: string = ''): Promise<void> {
     if (!user) return;
 
     try {
@@ -371,7 +313,7 @@ class FirestoreService {
           updatedAt: new Date(),
         }));
 
-        await this.saveTodoListToFirestore(user, listEntry.title, storageKey, todoItems);
+        await this.saveTodoListToFirestore(user, listEntry.title, storageKey, todoItems, passphrase);
       }
     } catch (error) {
       console.error(`Error syncing IndexedDB change for ${storageKey}:`, error);

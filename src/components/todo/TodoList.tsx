@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import ShadowIn from "@/components/animations/ShadowIn";
-import DecryptedText from "@/components/animations/DecryptedText";
 import { indexedDBStorage } from "@/lib/indexedDBStorage";
+import { useAuthStore } from "@/stores/authStore";
+import { useTodoStore } from "@/stores/todoStore";
 
 // Todo interface remains the same
 export interface Todo {
@@ -106,14 +107,18 @@ function getRandomGradient() {
   const idx = Math.floor(Math.random() * gradientKeys.length);
   return gradientMap[gradientKeys[idx]];
 }
+const hashTodos = (todos: Todo[]) => JSON.stringify(todos);
 
 // MODIFICATION: Renamed `cookieKey` prop to `storageKey` for clarity.
 export function TodoList({ title, storageKey, className, accentColor = '#000000' }: { title: string; storageKey: string; className?: string; accentColor?: string }) {
+  const { user } = useAuthStore();
+  const { setTodoLists, todoLists } = useTodoStore();
   const [mounted, setMounted] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
   const [gradientsForTodos, setGradientsForTodos] = useState<string[]>([]);
+  const lastMirroredHash = useRef<string>("");
 
   // This effect runs once on mount to indicate client-side rendering.
   useEffect(() => {
@@ -138,18 +143,44 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
     }
   }, [storageKey, mounted]);
 
-  // This effect saves the todos to IndexedDB whenever they change.
+  // This effect saves the todos to IndexedDB whenever they change and mirrors to store when logged in.
   useEffect(() => {
-    // Ensure we only save after initial load and on the client.
-    if (hasLoaded && mounted) {
-      // MODIFICATION: Call the new IndexedDB function.
-      setTodosToIndexedDB(storageKey, todos);
-      // This event can be used by other components to react to todo list changes.
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("todos-updated"));
+    if (!hasLoaded || !mounted) return;
+
+    // Persist locally (anonymous or offline use)
+    setTodosToIndexedDB(storageKey, todos);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("todos-updated"));
+    }
+
+    // If authenticated, mirror into Zustand so Firestore sync can pick it up
+    if (user) {
+      const safeTodos = Array.isArray(todos) ? todos : [];
+      const hash = hashTodos(safeTodos);
+      if (hash !== lastMirroredHash.current) {
+        lastMirroredHash.current = hash;
+        const now = new Date();
+        const mappedTodos = safeTodos.map((todo, idx) => ({
+          id: `${storageKey}-${idx}`,
+          text: todo.text,
+          completed: todo.completed,
+          createdAt: now,
+          updatedAt: now,
+        }));
+
+        const current = useTodoStore.getState().todoLists;
+        setTodoLists({
+          ...current,
+          [title]: {
+            title,
+            storageKey,
+            todos: mappedTodos,
+            lastModified: now,
+          },
+        } as any);
       }
     }
-  }, [todos, storageKey, hasLoaded, mounted]);
+  }, [todos, storageKey, hasLoaded, mounted, user, setTodoLists, title]);
 
   // This effect manages the random gradients for each todo item.
   useEffect(() => {
@@ -304,7 +335,7 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
         />
         <main className="flex flex-col gap-6 w-full max-w-md">
           <h1 className="title text-5xl text-left my-2">
-            <DecryptedText text={title} animateOn="view" className="title" speed={50} maxIterations={20} />
+            {title}
           </h1>
           
           <form

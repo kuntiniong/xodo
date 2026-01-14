@@ -19,11 +19,6 @@ An End-to-End Encrypted (E2EE), keyboard-centric productivity web app with Unix-
 - Enjoy a fast, fluid UI experience with the Masonry library on ANY devices.
 <img src="img/responsive.gif">
 
-## Table of Contents
-- [Workflow](#workflow)
-- [Tech Stack](#tech-stack)
-- [FAQ](#faq)
-
 ## Workflow
 <img src="img/flow-chart.png">
 
@@ -41,50 +36,16 @@ An End-to-End Encrypted (E2EE), keyboard-centric productivity web app with Unix-
 ### Deployment
 - Vercel
 
-## FAQ
-### 1. Why do we need the encrypted private key when we can use the pass phrase to directly encrypt the data?
-**Answer:** We use the encrypted private key approach for several important reasons:
-1. **Deterministic Key Generation:** The private key is generated deterministically from your user ID + passphrase using PBKDF2, ensuring the same key is always generated for the same user/passphrase combination
-2. **Cross-Device Consistency:** When you log in from different devices, the system needs to decrypt data that was encrypted on other devices. Storing the encrypted private key in Firestore allows any device to retrieve and decrypt it with your passphrase
-3. **OpenPGP Standard:** We use OpenPGP encryption which is battle-tested and provides strong security guarantees
-4. **Key Management:** It separates key management from data encryption, following cryptographic best practices
+## Technical Details
+Data Flow (logged-in users)
 
-### 2. What's the advantage of using passphrase instead of a more secure password here?
-**Answer:** The term "passphrase" is used because:
-1. **User Experience:** "Passphrase" suggests it can be a sentence or phrase, making it more memorable than a complex password
-2. **Length over Complexity:** Passphrases encourage longer strings, which are more secure than short complex passwords
-3. **Memorability:** Users are more likely to remember "my secret todo list for 2025" than "Mx9@kL#pW2"
-4. **PBKDF2 Strengthening:** The passphrase is strengthened with 100,000 iterations of PBKDF2, making brute force attacks computationally expensive
+Auth → user logs in → app prompts for passphrase → derives/decrypts AES key (cached in memory).
+Fetch → Firestore data is decrypted into memory (Zustand todoLists). UI renders from Zustand only.
+Edit → user types/adds/deletes → Zustand updates immediately (UI stays in sync).
+Sync → a 500ms debounce walks current todoLists, encrypts todos with the cached key, and writes to Firestore. This is write-only; no Firestore listener runs.
+Logout → clears Zustand and key cache; IndexedDB is not used for logged-in users.
+Data Flow (anonymous users)
 
-### 3. What does the program cache? the passphrase or the encrypted private key?
-**Answer:** The program now only caches the **decrypted private key** in memory during the session:
-- **Decrypted Private Key:** Cached in memory (not persisted) so it doesn't need to be re-decrypted on every operation
-- **No Passphrase Storage:** The passphrase is only used during login to decrypt the private key and is immediately discarded
-- **Location:** Stored in memory using a simple JavaScript Map for the duration of the session
-
-### 4. Where is the cache store?
-**Answer:** The cache is now stored in memory only:
-1. **In-Memory Key Cache:** A simple JavaScript Map that stores decrypted OpenPGP private keys
-2. **`TodoAppStorage` (IndexedDB):** Main application data (todos, settings) - unchanged
-3. **No Persistent Session Storage:** The decrypted private key is only kept in memory and cleared when the browser tab closes or user logs out
-
-**Security Benefits:**
-- **No Disk Persistence:** Sensitive decrypted keys are never written to disk
-- **Automatic Cleanup:** Memory is automatically cleared when the tab closes
-- **Reduced Attack Surface:** No persistent storage of sensitive cryptographic material
-
-### 5. Do the program store the decrypted json in the IndexedDB so that the import/export function still works when logged in? How does the system ensure this is secure?
-**Answer:** 
-**What's Stored:** The program stores DECRYPTED todo data in IndexedDB for performance reasons. The encrypted data remains in Firestore.
-
-**Security Measures:**
-1. **IndexedDB Security:** IndexedDB is more secure than localStorage with better XSS protection
-2. **Device-Level Security:** Data in IndexedDB is tied to your browser profile and domain
-3. **Session Management:** Cache is automatically cleared on logout
-4. **Connection Pooling:** Database connections timeout after 30 seconds of inactivity
-5. **No Persistent Storage:** Sensitive data (passphrase/keys) is only cached during active sessions
-
-**Import/Export Security:**
-- Export: Data is exported in plain text (since you're authenticated and have access)
-- Import: Data is immediately re-encrypted and synced to Firestore
-- Reset: Clears all local data and can optionally clear Firestore data
+Uses local template lists stored in IndexedDB (todos1…todos6).
+No Firestore access; everything stays in IndexedDB.
+Logout/reset just clears those IndexedDB keys.

@@ -28,19 +28,22 @@ class KeyCache {
       const keyArray = Array.from(keyMaterial);
       const keyData = JSON.stringify({
         userId,
-        keyArray: keyArray, // Store the raw key material
+        keyArray: keyArray,
         timestamp: Date.now(),
         algorithm: 'AES-GCM'
       });
-      await indexedDBStorage.setItem(`${this.KEY_PREFIX}${userId}`, keyData);
-      console.log(`Decrypted AES key cached persistently for user ${userId}`);
+      
+      const storageKey = `${this.KEY_PREFIX}${userId}`;
+      await indexedDBStorage.setItem(storageKey, keyData);
+      
     } catch (error) {
-      console.error('Failed to cache decrypted key to IndexedDB:', error);
+      console.error('❌ Failed to cache decrypted key to IndexedDB:', error);
+      throw error;
     }
   }
 
   async getDecryptedKey(userId: string): Promise<CryptoKey | null> {
-    // First check in-memory cache
+    // First check in-memory cache (silent - this is called frequently)
     if (this.cache.has(userId)) {
       const key = this.cache.get(userId);
       return key || null;
@@ -48,7 +51,9 @@ class KeyCache {
 
     // If not in memory, try to load from IndexedDB
     try {
-      const keyData = await indexedDBStorage.getItem(`${this.KEY_PREFIX}${userId}`);
+      const storageKey = `${this.KEY_PREFIX}${userId}`;
+      const keyData = await indexedDBStorage.getItem(storageKey);
+      
       if (keyData) {
         const parsed = JSON.parse(keyData);
         
@@ -57,7 +62,7 @@ class KeyCache {
           const keyArray = new Uint8Array(parsed.keyArray);
           const aesKey = await crypto.subtle.importKey(
             'raw',
-            keyArray,
+            keyArray.buffer as ArrayBuffer,
             { name: 'AES-GCM', length: 256 },
             false,
             ['encrypt', 'decrypt']
@@ -65,12 +70,11 @@ class KeyCache {
           
           // Store back in memory cache for faster access
           this.cache.set(userId, aesKey);
-          console.log(`Restored decrypted AES key from persistent cache for user ${userId}`);
           return aesKey;
         }
       }
     } catch (error) {
-      console.error('Failed to restore decrypted key from IndexedDB:', error);
+      console.error(`❌ Error retrieving key from IndexedDB:`, error);
     }
 
     return null;
@@ -151,7 +155,7 @@ export async function cacheDecryptedPrivateKey(userId: string, keyData: string, 
   const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
   const aesKey = await crypto.subtle.importKey(
     'raw',
-    keyMaterial,
+    keyMaterial.buffer as ArrayBuffer,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']

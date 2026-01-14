@@ -1,4 +1,5 @@
 
+// Import keyCache at module level to avoid circular dependency issues
 import { keyCache } from './keyCache';
 
 // Generate deterministic AES key from user ID and passphrase using PBKDF2
@@ -70,7 +71,7 @@ export async function importAESKey(keyData: string): Promise<CryptoKey> {
   const keyArray = new Uint8Array(JSON.parse(keyData));
   return await crypto.subtle.importKey(
     'raw',
-    keyArray,
+    keyArray.buffer as ArrayBuffer,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
@@ -85,19 +86,9 @@ export async function generateDeterministicPrivateKey(userId: string, passphrase
 
 // Cache a decrypted AES key for session use
 export async function cacheDecryptedPrivateKey(userId: string, keyData: string, passphrase: string) {
-  // Generate both the CryptoKey and the raw key material
-  const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
-  const aesKey = await crypto.subtle.importKey(
-    'raw',
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-  
-  // Use the new method that stores both the CryptoKey and raw material
-  await keyCache.setDecryptedKeyWithMaterial(userId, aesKey, keyMaterial);
-  return aesKey;
+  // Key is now derived on-demand, no caching needed
+  console.log('Passphrase validated, key will be derived on-demand');
+  return null;
 }
 
 // Validate passphrase by regenerating the key material and comparing with stored key
@@ -112,42 +103,48 @@ export async function validatePassphraseWithPrivateKey(storedKeyData: string, pa
 }
 
 // AES-GCM encryption
-export async function encryptData(data: string, userId: string): Promise<string> {
-  const cachedKey = await keyCache.getDecryptedKey(userId);
-  
-  if (!cachedKey) {
-    throw new Error('Decrypted key not available in cache. Please re-authenticate.');
-  }
-  
+export async function encryptData(data: string, userId: string, passphrase?: string): Promise<string> {
   const encoder = new TextEncoder();
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for GCM
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  
+  let aesKey: CryptoKey;
+  
+  // Try to use cached key first if no passphrase provided
+  if (!passphrase) {
+    const cachedKey = await keyCache.getDecryptedKey(userId);
+    if (cachedKey) {
+      aesKey = cachedKey;
+    } else {
+      throw new Error('No passphrase provided and no cached key available for encryption');
+    }
+  } else {
+    // Derive key from passphrase
+    const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
+    aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyMaterial.buffer as ArrayBuffer,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+  }
   
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: iv },
-    cachedKey,
+    aesKey,
     encoder.encode(data)
   );
   
-  // Combine IV + encrypted data and encode as base64
+  // Combine IV and encrypted data, then encode to base64
   const combined = new Uint8Array(iv.length + encrypted.byteLength);
   combined.set(iv);
   combined.set(new Uint8Array(encrypted), iv.length);
   
-  return btoa(String.fromCharCode(...combined));
+  return btoa(String.fromCharCode.apply(null, Array.from(combined)));
 }
 
 // AES-GCM decryption
-export async function decryptData(encryptedData: string, userId: string): Promise<string> {
-  if (!encryptedData || typeof encryptedData !== 'string') {
-    return encryptedData;
-  }
-  
-  const cachedKey = await keyCache.getDecryptedKey(userId);
-  
-  if (!cachedKey) {
-    throw new Error('Decrypted key not available in cache. Please re-authenticate.');
-  }
-  
+export async function decryptData(encryptedData: string, userId: string, passphrase?: string): Promise<string> {
   try {
     // Decode base64
     const combined = new Uint8Array(
@@ -158,9 +155,31 @@ export async function decryptData(encryptedData: string, userId: string): Promis
     const iv = combined.slice(0, 12);
     const encrypted = combined.slice(12);
     
+    let aesKey: CryptoKey;
+    
+    // Try to use cached key first if no passphrase provided
+    if (!passphrase) {
+      const cachedKey = await keyCache.getDecryptedKey(userId);
+      if (cachedKey) {
+        aesKey = cachedKey;
+      } else {
+        throw new Error('No passphrase provided and no cached key available for decryption');
+      }
+    } else {
+      // Derive key from passphrase
+      const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
+      aesKey = await crypto.subtle.importKey(
+        'raw',
+        keyMaterial.buffer as ArrayBuffer,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+    }
+    
     const decrypted = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: iv },
-      cachedKey,
+      aesKey,
       encrypted
     );
     
@@ -168,7 +187,7 @@ export async function decryptData(encryptedData: string, userId: string): Promis
     return decoder.decode(decrypted);
   } catch (error) {
     console.error('Decryption failed:', error);
-    throw new Error('Failed to decrypt data. Data may be corrupted or key may be incorrect.');
+    throw new Error('Failed to decrypt data. Data may be corrupted or passphrase may be incorrect.');
   }
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
-import { useFirestoreSync, useFirestoreListener } from '@/hooks/useFirestoreSync';
+import { useFirestoreSync } from '@/hooks/useFirestoreSync';
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -18,7 +18,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Enable Firestore sync hooks
   useFirestoreSync();
-  useFirestoreListener();
 
   return <>{children}</>;
 };
