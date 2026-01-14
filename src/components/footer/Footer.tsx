@@ -22,22 +22,19 @@ const footerSections: FooterSection[] = [
     title: "FAQ",
     links: [
       { label: "List of commands", href: "https://ktiong.com/xodo-doc" },
-      { label: "WHY should you use Xodo? (WIP)", href: "#" },
+    ],
+  },
+  {
+    title: "TECHNICAL ZONE",
+    links: [
+      { label: "source code", href: "https://github.com/kuntiniong/xodo" },
     ],
   },
   {
     title: "SOCIALS",
     links: [
       { label: "ktiong.com", href: "https://ktiong.com" },
-      { label: "X", href: "https://x.com/kuntiniong" },
-      { label: "GitHub", href: "https://github.com/kuntiniong" },
-    ],
-  },
-  {
-    title: "TECHNICAL ZONE",
-    links: [
-      { label: "Source Code (WIP)", href: "https://github.com/kuntiniong/xodo" },
-      { label: "\"How I made Xodo?\" - Blog (WIP)", href: "#" },
+      { label: "github", href: "https://github.com/kuntiniong" },
     ],
   },
 ];
