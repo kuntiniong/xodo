@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useMobile } from "@/hooks/use-mobile";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -14,23 +15,25 @@ const ShadowIn = forwardRef<ShadowInHandle, {
   className?: string;
   style?: React.CSSProperties;
   shadowColor?: string;
-}>(  ({ children, className, style, shadowColor = "white" }, ref) => { // Default to white
+}>(({ children, className, style, shadowColor = "var(--color-foreground)" }, ref) => {
+    const isMobile = useMobile();
     const shadowRef = useRef<HTMLDivElement | null>(null);
-    const parentRef = useRef<HTMLDivElement | null>(null); // Ref for the parent div to attach ScrollTrigger
-    const currentAnimationRef = useRef<gsap.core.Tween | null>(null); // Track current animation
+    const parentRef = useRef<HTMLDivElement | null>(null);
+    const currentAnimationRef = useRef<gsap.core.Tween | null>(null);
 
     // Expand function
     const expandShadow = () => {
       if (shadowRef.current) {
-        // Kill any existing animation
         if (currentAnimationRef.current) {
           currentAnimationRef.current.kill();
         }
         
+        const offset = isMobile ? 6 : 12;
+        
         currentAnimationRef.current = gsap.to(shadowRef.current, {
           opacity: 0.7,
-          x: 12,
-          y: 12,
+          x: offset,
+          y: offset,
           duration: 1.2,
           delay: 0,
           ease: "power3.out",
@@ -44,7 +47,6 @@ const ShadowIn = forwardRef<ShadowInHandle, {
     // Contract function
     const contractShadow = () => {
       if (shadowRef.current) {
-        // Kill any existing animation
         if (currentAnimationRef.current) {
           currentAnimationRef.current.kill();
         }
@@ -63,8 +65,10 @@ const ShadowIn = forwardRef<ShadowInHandle, {
       }
     };
 
-    useImperativeHandle(ref, () => ({ contractShadow, expandShadow }));    useEffect(() => {
-      if (shadowRef.current && parentRef.current) { // Check for parentRef.current as well
+    useImperativeHandle(ref, () => ({ contractShadow, expandShadow }));
+
+    useEffect(() => {
+      if (shadowRef.current && parentRef.current) {
         // Kill any existing ScrollTriggers and animations
         ScrollTrigger.getAll().forEach(trigger => {
           if (trigger.trigger === parentRef.current) {
@@ -72,33 +76,33 @@ const ShadowIn = forwardRef<ShadowInHandle, {
           }
         });
         
-        // Kill any existing manual animations
         if (currentAnimationRef.current) {
           currentAnimationRef.current.kill();
           currentAnimationRef.current = null;
         }
         
-        // Always use scroll trigger (no mobile logic)
+        // Different offset for mobile vs desktop
+        const offset = isMobile ? 6 : 12;
+        
+        // Use scroll trigger for both mobile and desktop
         const scrollTriggerTween = gsap.fromTo(shadowRef.current, 
           { opacity: 0, x: 0, y: 0 }, 
           {
             opacity: 0.7,
-            x: 12,
-            y: 12,
+            x: offset,
+            y: offset,
             duration: 1.2,
             ease: "power3.out",
             onStart: () => {
-              // Set this as the current animation when scroll trigger starts
               currentAnimationRef.current = scrollTriggerTween;
             },
             onComplete: () => {
-              // Clear the reference when scroll animation completes
               if (currentAnimationRef.current === scrollTriggerTween) {
                 currentAnimationRef.current = null;
               }
             },
             scrollTrigger: {
-              trigger: parentRef.current, // Use parentRef.current as the trigger
+              trigger: parentRef.current,
               start: "top bottom-=100", 
               toggleActions: "play none none none", 
             }
@@ -114,24 +118,25 @@ const ShadowIn = forwardRef<ShadowInHandle, {
           }
         });
         
-        // Kill any existing manual animations
         if (currentAnimationRef.current) {
           currentAnimationRef.current.kill();
           currentAnimationRef.current = null;
         }
       };
-    }, []);    return (
+    }, [isMobile]);
+
+    return (
       <div
         ref={parentRef}
-        className={["relative", className].filter(Boolean).join(" ")}
+        className={["relative h-full w-full", className].filter(Boolean).join(" ")}
         style={style}
       >
         <div
           ref={shadowRef}
           className="absolute inset-0 rounded-3xl pointer-events-none"
-          style={{ background: shadowColor, zIndex: 0 }} // Use shadowColor here
+          style={{ background: shadowColor, zIndex: 0 }}
         />
-        <div className="relative z-10 flex flex-col">{children}</div>
+        <div className="relative z-10 h-full w-full flex flex-col">{children}</div>
       </div>
     );
   }

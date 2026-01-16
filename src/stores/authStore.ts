@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { auth, googleProvider, db } from '@/lib/firebase';
 import { firestoreService } from '@/services/firestoreService';
-import { generateDeterministicPrivateKey, generateDeterministicKeyMaterial } from '@/lib/crypto';
+import { deriveVerificationHash, deriveCryptoKeyFromPassphrase } from '@/lib/crypto';
 import { indexedDBStorage } from '@/lib/indexedDBStorage';
 import { keyCache } from '@/lib/keyCache';
 
@@ -284,11 +284,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const userData = userDoc.data();
-      const storedHash = userData.passphraseHash;
-      const storedPrivateKey = userData.encryptedPrivateKey;
+      const storedVerificationHash = userData.verificationHash as string | undefined;
+      const storedPassphraseHash = userData.passphraseHash as string | undefined;
       
-      if (!storedHash || !storedPrivateKey) {
-        console.log('User data incomplete - missing encryption keys or passphrase hash');
+      if (!storedVerificationHash && !storedPassphraseHash) {
+        console.log('User data incomplete - missing verification hash');
         set({ 
           passphraseError: 'Encryption data is incomplete. Please create your passphrase again.',
           isPassphraseRequired: true,
@@ -298,28 +298,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      const encoder = new TextEncoder();
-      const data = encoder.encode(passphrase);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const providedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      
-      if (providedHash !== storedHash) {
+      let isValid = false;
+      if (storedVerificationHash) {
+        const providedVerificationHash = await deriveVerificationHash(user.uid, passphrase);
+        isValid = providedVerificationHash === storedVerificationHash;
+      } else if (storedPassphraseHash) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(passphrase);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const providedPassphraseHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        isValid = providedPassphraseHash === storedPassphraseHash;
+
+        if (isValid) {
+          const verificationHash = await deriveVerificationHash(user.uid, passphrase);
+          await updateDoc(userDocRef, { verificationHash });
+        }
+      }
+
+      if (!isValid) {
         throw new Error('Invalid passphrase');
       }
 
       // Single source of truth: Cache the key material once after successful passphrase validation
-      const keyMaterial = await generateDeterministicKeyMaterial(user.uid, passphrase);
-      const aesKey = await crypto.subtle.importKey(
-        'raw',
-        keyMaterial.buffer as ArrayBuffer,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt']
-      );
+      const aesKey = await deriveCryptoKeyFromPassphrase(user.uid, passphrase, false);
       
       // This is the ONLY place we cache the key - no redundant calls
-      await keyCache.setDecryptedKeyWithMaterial(user.uid, aesKey, keyMaterial);
+      await keyCache.setDecryptedKey(user.uid, aesKey);
 
       const todoLists = await firestoreService.loadAllTodoListsFromFirestore(user, passphrase);
       
@@ -381,33 +386,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         authFlowState: 'generating-keys'
       });
       
-      const privateKey = await generateDeterministicPrivateKey(user.uid, passphrase);
-      
-      const encoder = new TextEncoder();
-      const data = encoder.encode(passphrase);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const passphraseHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      const verificationHash = await deriveVerificationHash(user.uid, passphrase);
       
       const userDocRef = doc(db, 'users', user.uid);
       await updateDoc(userDocRef, {
-        encryptedPrivateKey: privateKey,
-        passphraseHash,
+        verificationHash,
         hasEncryptionKeys: true
       });
       
-      console.log('Successfully stored private key and passphrase hash to Firebase');
+      console.log('Successfully stored verification hash to Firebase');
       
-      // Cache the key material in memory and IndexedDB for this session
-      const keyMaterial = await generateDeterministicKeyMaterial(user.uid, passphrase);
-      const aesKey = await crypto.subtle.importKey(
-        'raw',
-        keyMaterial.buffer as ArrayBuffer,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt']
-      );
-      await keyCache.setDecryptedKeyWithMaterial(user.uid, aesKey, keyMaterial);
+      // Cache the CK in memory for this session
+      const aesKey = await deriveCryptoKeyFromPassphrase(user.uid, passphrase, false);
+      await keyCache.setDecryptedKey(user.uid, aesKey);
       
       set({ 
         isPassphraseRequired: false, 
@@ -498,7 +489,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (userDoc.exists()) {
         const data = userDoc.data();
-        if (data.encryptedPrivateKey && data.hasEncryptionKeys && data.passphraseHash) {
+        if (data.hasEncryptionKeys && (data.verificationHash || data.passphraseHash)) {
           console.log('User has encryption keys, requiring passphrase to unlock');
           set({ 
             isPassphraseRequired: true,

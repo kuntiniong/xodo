@@ -12,8 +12,8 @@ import {
 import ClientLayout from "./ClientLayout";
 
 export const metadata: Metadata = {
-  title: "Xodo - A Keyboard-first To do list",
-  description: "Linux-like syntax Keyboard-first to do list web app",
+  title: "Xodo | E2EE To do list",
+  description: "",
   icons: {
     icon: "/favicon.png",
   },

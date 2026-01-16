@@ -5,6 +5,7 @@ import ShadowIn from "@/components/animations/ShadowIn";
 import { indexedDBStorage } from "@/lib/indexedDBStorage";
 import { useAuthStore } from "@/stores/authStore";
 import { useTodoStore } from "@/stores/todoStore";
+import { useMobile } from "@/hooks/use-mobile";
 
 // Todo interface remains the same
 export interface Todo {
@@ -113,6 +114,7 @@ const hashTodos = (todos: Todo[]) => JSON.stringify(todos);
 export function TodoList({ title, storageKey, className, accentColor = '#000000' }: { title: string; storageKey: string; className?: string; accentColor?: string }) {
   const { user } = useAuthStore();
   const { setTodoLists, todoLists } = useTodoStore();
+  const isMobile = useMobile();
   const [mounted, setMounted] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
@@ -317,14 +319,19 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
   // The JSX rendering structure remains unchanged.
   return (
     <ShadowIn className="w-full" shadowColor="white">
-      <div id={title} className={`card flex flex-col items-center justify-center bg-background text-foreground p-8 max-w-2xl w-full mx-auto relative overflow-hidden ${className ?? ''}`}>
+      <div
+        id={title}
+        className={`card flex flex-col items-center justify-center bg-background text-foreground ${
+          isMobile ? "p-6" : "p-8"
+        } max-w-2xl w-full mx-auto relative overflow-hidden ${className ?? ""}`}
+      >
         <div
           style={{
             position: 'absolute',
             top: 0,
             right: 0,
-            width: 200,
-            height: 80,
+            width: isMobile ? 140 : 200,
+            height: isMobile ? 60 : 80,
             background: accentColor,
             borderTopRightRadius: 24,
             transform: 'translate(30%,-110%) rotate(45deg)',
@@ -334,7 +341,7 @@ export function TodoList({ title, storageKey, className, accentColor = '#000000'
           aria-hidden="true"
         />
         <main className="flex flex-col gap-6 w-full max-w-md">
-          <h1 className="title text-5xl text-left my-2">
+          <h1 className={`title text-left my-2 ${isMobile ? "text-4xl" : "text-5xl"}`}>
             {title}
           </h1>
           

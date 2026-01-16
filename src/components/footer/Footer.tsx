@@ -21,20 +21,15 @@ const footerSections: FooterSection[] = [
   {
     title: "FAQ",
     links: [
-      { label: "List of commands", href: "https://ktiong.com/xodo-doc" },
-    ],
-  },
-  {
-    title: "TECHNICAL ZONE",
-    links: [
+      { label: "list of commands", href: "https://ktiong.com/xodo-doc" },
       { label: "source code", href: "https://github.com/kuntiniong/xodo" },
     ],
   },
   {
     title: "SOCIALS",
     links: [
-      { label: "ktiong.com", href: "https://ktiong.com" },
       { label: "github", href: "https://github.com/kuntiniong" },
+      { label: "ktiong.com", href: "https://ktiong.com" },
     ],
   },
 ];

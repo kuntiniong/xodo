@@ -2,41 +2,20 @@
 // Import keyCache at module level to avoid circular dependency issues
 import { keyCache } from './keyCache';
 
-// Generate deterministic AES key from user ID and passphrase using PBKDF2
-export async function generateDeterministicAESKey(userId: string, passphrase: string, extractable: boolean = false): Promise<CryptoKey> {
+const PBKDF2_ITERATIONS = 100000;
+const MASTER_KEY_BITS = 512;
+
+function getSalt(userId: string): Uint8Array {
   const encoder = new TextEncoder();
-  const salt = encoder.encode(`todo-app-${userId}`); // Fixed salt based on user ID
-  
-  const passphraseKey = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  
-  // Derive AES-256 key
-  const aesKey = await crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: salt,
-      iterations: 100000,
-      hash: 'SHA-256'
-    },
-    passphraseKey,
-    { name: 'AES-GCM', length: 256 }, // AES-256-GCM
-    extractable, // Make extractable only when needed
-    ['encrypt', 'decrypt']
-  );
-  
-  return aesKey;
+  return encoder.encode(`todo-app-${userId}`);
 }
 
-// Generate raw key material for storage (avoids the extractable issue)
-export async function generateDeterministicKeyMaterial(userId: string, passphrase: string): Promise<Uint8Array> {
+function toArrayBuffer(view: Uint8Array): ArrayBuffer {
+  return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
+}
+
+async function deriveMasterKeyMaterial(userId: string, passphrase: string): Promise<Uint8Array> {
   const encoder = new TextEncoder();
-  const salt = encoder.encode(`todo-app-${userId}`);
-  
   const passphraseKey = await crypto.subtle.importKey(
     'raw',
     encoder.encode(passphrase),
@@ -44,62 +23,49 @@ export async function generateDeterministicKeyMaterial(userId: string, passphras
     false,
     ['deriveBits']
   );
-  
-  // Derive 32 bytes of key material directly
+
   const keyBits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
-      salt: salt,
-      iterations: 100000,
+      salt: toArrayBuffer(getSalt(userId)),
+      iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256'
     },
     passphraseKey,
-    256 // 32 bytes for AES-256
+    MASTER_KEY_BITS
   );
-  
+
   return new Uint8Array(keyBits);
 }
 
-// Export raw key material to JSON format for storage
-export async function exportKeyMaterial(keyMaterial: Uint8Array): Promise<string> {
-  const keyArray = Array.from(keyMaterial);
-  return JSON.stringify(keyArray);
+function splitSubkeys(masterKey: Uint8Array): { verificationKey: Uint8Array; cryptoKeyMaterial: Uint8Array } {
+  const verificationKey = masterKey.slice(0, 32); // first 256 bits
+  const cryptoKeyMaterial = masterKey.slice(32, 64); // second 256 bits
+  return { verificationKey, cryptoKeyMaterial };
 }
 
-// Import AES key from JSON format
-export async function importAESKey(keyData: string): Promise<CryptoKey> {
-  const keyArray = new Uint8Array(JSON.parse(keyData));
+export async function deriveVerificationHash(userId: string, passphrase: string): Promise<string> {
+  const masterKey = await deriveMasterKeyMaterial(userId, passphrase);
+  const { verificationKey } = splitSubkeys(masterKey);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', toArrayBuffer(verificationKey));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function deriveCryptoKeyFromPassphrase(
+  userId: string,
+  passphrase: string,
+  extractable: boolean = false
+): Promise<CryptoKey> {
+  const masterKey = await deriveMasterKeyMaterial(userId, passphrase);
+  const { cryptoKeyMaterial } = splitSubkeys(masterKey);
   return await crypto.subtle.importKey(
     'raw',
-    keyArray.buffer as ArrayBuffer,
+    toArrayBuffer(cryptoKeyMaterial),
     { name: 'AES-GCM', length: 256 },
-    false,
+    extractable,
     ['encrypt', 'decrypt']
   );
-}
-
-// Generate deterministic private key and export it for storage
-export async function generateDeterministicPrivateKey(userId: string, passphrase: string): Promise<string> {
-  const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
-  return await exportKeyMaterial(keyMaterial);
-}
-
-// Cache a decrypted AES key for session use
-export async function cacheDecryptedPrivateKey(userId: string, keyData: string, passphrase: string) {
-  // Key is now derived on-demand, no caching needed
-  console.log('Passphrase validated, key will be derived on-demand');
-  return null;
-}
-
-// Validate passphrase by regenerating the key material and comparing with stored key
-export async function validatePassphraseWithPrivateKey(storedKeyData: string, passphrase: string, userId: string): Promise<boolean> {
-  try {
-    const regeneratedKeyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
-    const regeneratedKeyData = await exportKeyMaterial(regeneratedKeyMaterial);
-    return storedKeyData === regeneratedKeyData;
-  } catch (error) {
-    return false;
-  }
 }
 
 // AES-GCM encryption
@@ -118,15 +84,8 @@ export async function encryptData(data: string, userId: string, passphrase?: str
       throw new Error('No passphrase provided and no cached key available for encryption');
     }
   } else {
-    // Derive key from passphrase
-    const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
-    aesKey = await crypto.subtle.importKey(
-      'raw',
-      keyMaterial.buffer as ArrayBuffer,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt']
-    );
+    // Derive CK from passphrase
+    aesKey = await deriveCryptoKeyFromPassphrase(userId, passphrase, false);
   }
   
   const encrypted = await crypto.subtle.encrypt(
@@ -166,15 +125,8 @@ export async function decryptData(encryptedData: string, userId: string, passphr
         throw new Error('No passphrase provided and no cached key available for decryption');
       }
     } else {
-      // Derive key from passphrase
-      const keyMaterial = await generateDeterministicKeyMaterial(userId, passphrase);
-      aesKey = await crypto.subtle.importKey(
-        'raw',
-        keyMaterial.buffer as ArrayBuffer,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-      );
+      // Derive CK from passphrase
+      aesKey = await deriveCryptoKeyFromPassphrase(userId, passphrase, false);
     }
     
     const decrypted = await crypto.subtle.decrypt(
